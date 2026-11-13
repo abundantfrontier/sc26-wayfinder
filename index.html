@@ -45,6 +45,12 @@
   main{max-width:860px; margin:0 auto; padding:14px 14px 6px}
   .intro{font-size:17px; margin:2px 2px 12px}
   .intro strong{color:var(--green)}
+  .egg-hint{display:flex; align-items:center; gap:8px; margin:-4px 2px 12px; font-size:15px; font-style:italic; color:#6b6252}
+  .egg-hint .nowrap{white-space:nowrap}
+  .egg-link{flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; min-width:52px; min-height:52px; border-radius:50%}
+  .egg-link img{display:block; width:52px; height:auto; transition:transform .2s}
+  .egg-link:active img, .egg-link:hover img{transform:rotate(-10deg) scale(1.08)}
+  .egg-link:focus-visible{outline:3px solid var(--bright); outline-offset:2px}
   /* ---------- cards ---------- */
   .card{
     background:var(--card); border:1.5px solid var(--green); border-radius:12px;
@@ -158,6 +164,8 @@
 
 <main>
   <p class="intro"><strong>Lost in the exhibit hall?</strong> We understand — we want to help. Tell us where you are and where you&rsquo;re headed, and we&rsquo;ll draw the walk.</p>
+  <p class="egg-hint"><span>I wonder what the &ldquo;Party Egg&rdquo; is <span class="nowrap">all about? &rarr;</span></span>
+    <a class="egg-link" href="parties.html" aria-label="Party Egg"><img src="party-egg.webp" alt="" width="52" height="57"></a></p>
 
   <section class="card" aria-label="Route finder">
     <label for="fromInput">You are at</label>
