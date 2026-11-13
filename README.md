@@ -42,7 +42,7 @@ The SC26 exhibit floor is enormous — 600 exhibitors spread across two halls at
 
 The Abundant Frontier Institute is a 501(c)(3) tax-exempt nonprofit research institute helping institutions build SI capability — including hosting Megathons where faculty and staff learn to build SI, not just use it.
 
-[abundantfrontier.org](https://abundantfrontier.org) · jeaimehp@abundantfrontier.org · Booth 3723 (with Omnibond)
+[abundantfrontier.org](https://abundantfrontier.org) · contact@abundantfrontier.org · Booth 3723 (with Omnibond)
 
 ## License
 
