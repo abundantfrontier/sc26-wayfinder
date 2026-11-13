@@ -45,6 +45,9 @@
   main{max-width:860px; margin:0 auto; padding:14px 14px 6px}
   .intro{font-size:17px; margin:2px 2px 12px}
   .intro strong{color:var(--green)}
+  .clock{display:inline-flex; align-items:center; gap:6px; margin:0 2px 10px; padding:5px 12px; border-radius:999px; background:var(--green); color:var(--cream); font-size:14.5px; font-weight:700}
+  .clock[hidden]{display:none}
+  .clock time{font-variant-numeric:tabular-nums}
   .egg-hint{display:flex; align-items:center; gap:8px; margin:-4px 2px 12px; font-size:15px; font-style:italic; color:#6b6252}
   .egg-hint .nowrap{white-space:nowrap}
   .egg-link{flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; min-width:52px; min-height:52px; border-radius:50%}
@@ -163,6 +166,7 @@
 </header>
 
 <main>
+  <p class="clock" id="chiClock" hidden><span aria-hidden="true">&#128339;</span> Chicago time: <time></time></p>
   <p class="intro"><strong>Lost in the exhibit hall?</strong> We understand — we want to help. Tell us where you are and where you&rsquo;re headed, and we&rsquo;ll draw the walk.</p>
   <p class="egg-hint"><span>I wonder what the &ldquo;Party Egg&rdquo; is <span class="nowrap">all about? &rarr;</span></span>
     <a class="egg-link" href="parties.html" aria-label="Party Egg"><img src="party-egg.webp" alt="" width="52" height="57"></a></p>
@@ -241,5 +245,26 @@
 
 <script src="router.js"></script>
 <script src="app.js"></script>
+<script>
+/* Live clock in Chicago time (SC26 is at McCormick Place, Chicago). */
+(function () {
+  var el = document.getElementById('chiClock');
+  if (!el || !window.Intl) return;
+  var fmtT, fmtD;
+  try {
+    fmtT = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' });
+    fmtD = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric' });
+  } catch (e) { return; }
+  var t = el.querySelector('time');
+  function tick() {
+    var now = new Date();
+    t.textContent = fmtT.format(now) + ' \u00b7 ' + fmtD.format(now);
+    t.setAttribute('datetime', now.toISOString());
+    el.hidden = false;
+    setTimeout(tick, 60000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 50);
+  }
+  tick();
+})();
+</script>
 </body>
 </html>
