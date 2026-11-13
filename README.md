@@ -28,9 +28,9 @@ The SC26 exhibit floor is enormous — 600 exhibitors spread across two halls at
 
 - **Floor data.** The map is drawn from the official floor plan's own CAD export: the DWG file offered by the SC26 interactive floor plan was parsed with [LibreDWG](https://www.gnu.org/software/libredwg/) (open source), yielding the exact geometry and exhibitor name of all 600 booths.
 - **Routing.** Booths were turned into an aisle network (a grid graph over the hall's walkable aisles) and routes are computed with an A* shortest-path search, then simplified into plain-language walking directions.
-- **Testing.** Automated suites verify the build before it ships: Node checks confirm every one of the 599 other booths routes successfully from Booth 3723 with zero paths crossing a booth, and a regression check holds the Omnibond → NCSA route at ≈594 ft against the hand-drawn reference map. Real-browser checks at a phone viewport (390×844) cover the default start, the exhibitor picker, share-link round-trips, and an offline `file://` fallback that embeds the booth data in the page.
+- **Testing.** Automated suites verify the build before it ships: Node checks confirm every one of the 599 other booths routes successfully from Booth 3723 with zero paths crossing a booth, and a regression check holds the Omnibond → NCSA route at ≈616 ft against the hand-drawn reference map. Real-browser checks at a phone viewport (390×844) cover the default start, the exhibitor picker, share-link round-trips, and opening the page offline from `file://` (the booth data is embedded in `app.js`; `booths.json` is the source copy).
 - **Refinements.** Both fields are searchable comboboxes — tap to browse the full scrollable A–Z exhibitor list, or type to filter with ranked suggestions — and exhibitor names on the map scale with booth size so the big booths work as landmarks.
-- **Tech.** One static page in vanilla HTML/CSS/JS. No build step, no external requests, ~165 KB total — it loads fast on congested conference Wi-Fi and is hosted on GitHub Pages from this repo's `main` branch.
+- **Tech.** One static page in vanilla HTML/CSS/JS. No build step, no external requests, ~115 KB total — it loads fast on congested conference Wi-Fi and is hosted on GitHub Pages from this repo's `main` branch.
 
 ## Reference data
 
