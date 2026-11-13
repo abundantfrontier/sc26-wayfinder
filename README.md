@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/afi-logo.png" alt="Abundant Frontier Institute wheat logo" width="120"></p>
+<p align="center"><img src="og-logo.png" alt="Abundant Frontier Institute logo" width="420"></p>
 
 # SC26 Hall Wayfinder
 
