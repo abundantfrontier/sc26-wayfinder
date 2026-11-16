@@ -59,8 +59,11 @@ with y increasing northward (CAD convention). The SVG flips y (`screenY = -y`). 
    4-directional A* (Manhattan heuristic, binary heap), then `simplify` (merge straight runs, then shortcut
    wherever there is a clear line of sight, sampled every 10 units). It prefers a route whose booth-centre connectors don't cross a third booth.
    It returns `{points, lengthFt, fromEntrance, toEntrance, aislePoints}`.
-4. `makeDirections(points, from, to)`: compass legs (north = up on the plan). Legs under 25 ft are folded into a neighbour, at most 3 legs
-   plus an "Arrive at …" line. Turn left or right comes from the cross product.
+4. `makeDirections(points, from, to, booths)`: landmark directions. It drops the booth-centre↔entrance hops, folds legs under 25 ft
+   into a neighbour (re-merging same-direction legs), and caps the result at 3 legs. A short doubling-back at the end is dropped, and "Arrive at …" is added.
+   Each leg names the biggest booth **ahead** along it ("head toward Google Cloud"). Turns name the booth at the corner ("At nVent, turn right").
+   Step 1 also says the map direction ("down the map"). Left/right turns come from the clockwise order of the leg directions.
+   **Never use N/S/E/W words:** see "Compass and GPS" below.
 
 This is a JavaScript port of an earlier `astar2.py`, which is not in this repo.
 
@@ -163,9 +166,14 @@ The style used so far is a short imperative subject plus a body explaining why. 
 (the harness supplies it). After pushing, confirm the live page has the change, for example
 `curl -s 'https://abundantfrontier.github.io/sc26-wayfinder/parties.html?v=1' | grep -c <marker>`.
 
+## Compass and GPS (tested on site, Nov 16 2026 — rejected)
+The owner took iPhone Compass app readings in the aisle running Omnibond (3723) → Google Cloud (3418) → Microsoft (3411), facing the
+**same** direction (down the map) both times. They read 206° at 3723 and 22° at 3411, about 180° apart within roughly 100 ft. The hall's steel makes phone
+magnetometers useless. GPS showed the same wrong position (the North Building) for 18 minutes. So the app has no compass or GPS
+features, and the directions use landmarks instead of compass words. A gyroscope-based arrow (aim once at a named landmark, then track turns) was
+considered and set aside by the owner. OpenStreetMap shows the West Building (Hall F) aligned to true north within about 1°.
+
 ## Known issues / backlog (not done)
-- **Compass words are relative to the plan:** "north" means up on the floor plan, which may not match the real compass in the hall.
-  "Toward the back of the hall" or "up on the map" wording would be safer.
 - **Leg folding in `makeDirections`** adds a short leg's distance to its neighbour's heading, so the text can be slightly off
   (the map line is exact).
 - **Swap** only re-routes when both fields are filled; `fromBooth` and `toBooth` can briefly be stale.

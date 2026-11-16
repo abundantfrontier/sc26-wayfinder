@@ -292,12 +292,67 @@
   }
 
   // --- plain-language walking directions from a route's major turns ---
+  // Phone compasses are unreliable inside the hall (readings taken on site
+  // flipped ~180° within 100 ft), so the text names booths people can see
+  // ("head toward Microsoft") plus the direction on the map, never N/S/E/W.
+  var ORDER = ['north', 'east', 'south', 'west'];          // clockwise
+  var ON_MAP = { north: 'up the map', south: 'down the map', east: 'to the right on the map', west: 'to the left on the map' };
   function dirName(dx, dy) {
     if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? 'east' : 'west';
     return dy > 0 ? 'north' : 'south';
   }
-  function makeDirections(points, from, to) {
+  function rectDist(b, x, y) {
+    var ddx = Math.max(b.x0 - x, 0, x - b.x1), ddy = Math.max(b.y0 - y, 0, y - b.y1);
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+  function isLandmarkName(b) { return b.name && !/^reserved$/i.test(b.name.trim()); }
+  function boothArea(b) { return (b.x1 - b.x0) * (b.y1 - b.y0); }
+
+  // Biggest named booth beside the leg, favouring ones near its far end
+  // (that's what you walk toward). Looks 20 ft past the end, too.
+  function landmarkAlong(leg, booths, skip) {
+    var len = Math.sqrt(leg.dx * leg.dx + leg.dy * leg.dy);
+    if (!booths || len < 1) return null;
+    var ux = leg.dx / len, uy = leg.dy / len, reach = len + 240;
+    var best = null, bestScore = 0;
+    for (var i = 0; i < booths.length; i++) {
+      var b = booths[i];
+      if (!isLandmarkName(b) || skip(b)) continue;
+      // quick reject: booth far from the leg's bounding box
+      var ex = leg.sx + ux * reach, ey = leg.sy + uy * reach;
+      if (b.x1 < Math.min(leg.sx, ex) - 150 || b.x0 > Math.max(leg.sx, ex) + 150 ||
+          b.y1 < Math.min(leg.sy, ey) - 150 || b.y0 > Math.max(leg.sy, ey) + 150) continue;
+      var bestT = -1;
+      for (var d = len * 0.3; d <= reach; d += 30) {
+        if (rectDist(b, leg.sx + ux * d, leg.sy + uy * d) <= 100) bestT = d;
+      }
+      if (bestT < 0) continue;
+      // must lie ahead, not beside where the leg starts
+      var ahead = ((b.x0 + b.x1) / 2 - leg.sx) * ux + ((b.y0 + b.y1) / 2 - leg.sy) * uy;
+      if (ahead < Math.min(len * 0.5, 240)) continue;
+      var score = boothArea(b) * (0.5 + Math.min(bestT, len) / len);
+      if (score > bestScore) { bestScore = score; best = b; }
+    }
+    return best;
+  }
+  // Biggest named booth right at a corner (within ~12 ft of it).
+  function landmarkAt(x, y, booths, skip) {
+    var best = null;
+    for (var i = 0; i < (booths ? booths.length : 0); i++) {
+      var b = booths[i];
+      if (!isLandmarkName(b) || skip(b) || rectDist(b, x, y) > 150) continue;
+      if (!best || boothArea(b) > boothArea(best)) best = b;
+    }
+    return best;
+  }
+
+  function makeDirections(points, from, to, booths) {
     if (!points || points.length < 2) return [];
+    // the first and last hops just connect the booth centres to their
+    // entrances; walking directions start and end at the aisle
+    var isCentre = function (p, b) { return b && b.cx !== undefined && p[0] === b.cx && p[1] === b.cy; };
+    if (points.length > 2 && isCentre(points[0], from)) points = points.slice(1);
+    if (points.length > 2 && isCentre(points[points.length - 1], to)) points = points.slice(0, -1);
     var legs = [];
     for (var i = 1; i < points.length; i++) {
       var dx = points[i][0] - points[i - 1][0], dy = points[i][1] - points[i - 1][1];
@@ -306,42 +361,66 @@
       var dir = dirName(dx, dy);
       var last = legs[legs.length - 1];
       if (last && last.dir === dir) { last.len += len; last.dx += dx; last.dy += dy; }
-      else legs.push({ dir: dir, len: len, dx: dx, dy: dy });
+      else legs.push({ dir: dir, len: len, dx: dx, dy: dy, sx: points[i - 1][0], sy: points[i - 1][1] });
     }
     if (!legs.length) return [];
+    function absorb(into, from) {
+      if (from.sx !== undefined && legs.indexOf(from) < legs.indexOf(into)) { into.sx = from.sx; into.sy = from.sy; }
+      into.len += from.len; into.dx += from.dx; into.dy += from.dy;
+    }
+    function mergeSameDir() {
+      for (var q = legs.length - 1; q > 0; q--) {
+        if (legs[q].dir === legs[q - 1].dir) { absorb(legs[q - 1], legs[q]); legs.splice(q, 1); }
+      }
+    }
     // fold tiny legs (< 25 ft) into a neighbour so directions stay readable
     var changed = true;
     while (changed && legs.length > 1) {
       changed = false;
       for (var j = 0; j < legs.length; j++) {
         if (legs[j].len < 300) {
-          var tgt = (j === 0) ? 1 : j - 1;
-          legs[tgt].len += legs[j].len; legs[tgt].dx += legs[j].dx; legs[tgt].dy += legs[j].dy;
+          absorb(legs[j === 0 ? 1 : j - 1], legs[j]);
           legs.splice(j, 1); changed = true; break;
         }
       }
+      mergeSameDir();
     }
     // cap at 3 legs + arrival line = 4 steps
     while (legs.length > 3) {
       var si = 0, sl = Infinity;
       for (var k = 0; k < legs.length; k++) if (legs[k].len < sl) { sl = legs[k].len; si = k; }
-      var t2 = (si === 0) ? 1 : si - 1;
-      legs[t2].len += legs[si].len; legs[t2].dx += legs[si].dx; legs[t2].dy += legs[si].dy;
+      absorb(legs[si === 0 ? 1 : si - 1], legs[si]);
       legs.splice(si, 1);
+      mergeSameDir();
+    }
+    // a short doubling-back at the very end is just the walk round to the
+    // booth's entrance; "Arrive at …" covers it
+    if (legs.length > 1) {
+      var lastLeg = legs[legs.length - 1], prevLeg = legs[legs.length - 2];
+      if (lastLeg.len < 720 && (ORDER.indexOf(lastLeg.dir) + 2) % 4 === ORDER.indexOf(prevLeg.dir)) legs.pop();
     }
     function ft(len) { return Math.max(5, Math.round(len / 12 / 5) * 5); }
     function label(b) { return (b.name ? b.name + ' (Booth ' + b.n + ')' : 'Booth ' + b.n); }
-    var steps = [];
+    function skip(b) {
+      return b === from || b === to || (from.name && b.name === from.name) || (to.name && b.name === to.name);
+    }
+    var steps = [], prevMark = null;
     for (var m = 0; m < legs.length; m++) {
-      var leg = legs[m];
+      var leg = legs[m], corner = null;
+      if (m > 0) corner = (prevMark && rectDist(prevMark, leg.sx, leg.sy) <= 300) ? prevMark : landmarkAt(leg.sx, leg.sy, booths, skip);
+      var mark = landmarkAlong(leg, booths, function (b) { return skip(b) || (corner && b.name === corner.name); });
+      var toward = mark ? 'toward ' + mark.name + ' (' + ON_MAP[leg.dir] + ')' : ON_MAP[leg.dir];
       if (m === 0) {
-        steps.push('Head ' + leg.dir + ' from ' + label(from) + ' — about ' + ft(leg.len) + ' ft.');
+        steps.push('From ' + label(from) + ', head ' + toward + ' — about ' + ft(leg.len) + ' ft.');
       } else {
-        var prev = legs[m - 1];
-        var cross = prev.dx * leg.dy - prev.dy * leg.dx;
-        var turn = cross > 1 ? 'Turn left and head ' : (cross < -1 ? 'Turn right and head ' : 'Continue ');
-        steps.push(turn + leg.dir + ' — about ' + ft(leg.len) + ' ft.');
+        var diff = (ORDER.indexOf(leg.dir) - ORDER.indexOf(legs[m - 1].dir) + 4) % 4;
+        var turn = diff === 1 ? 'turn right' : diff === 3 ? 'turn left' : diff === 2 ? 'turn around' : 'keep going';
+        var lead = corner ? 'At ' + corner.name + ', ' + turn : turn.charAt(0).toUpperCase() + turn.slice(1);
+        // after the first step the turn itself says which way; "turn right and
+        // head left on the map" is true but confusing, so no map hint here
+        steps.push(lead + (mark ? ' and head toward ' + mark.name : '') + ' — about ' + ft(leg.len) + ' ft.');
       }
+      prevMark = mark;
     }
     steps.push('Arrive at ' + label(to) + '.');
     return steps.slice(0, 4);

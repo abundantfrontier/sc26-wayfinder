@@ -229,7 +229,7 @@
     $('resultStats').innerHTML =
       '<span class="dest">' + esc(t.name) + ' · Booth ' + esc(t.n) + '</span>' +
       '<span class="distline">≈ ' + ft + ' ft · about a ' + mins + '-minute walk</span>';
-    var dirs = Wayfinder.makeDirections(route.points, f, t);
+    var dirs = Wayfinder.makeDirections(route.points, f, t, booths);
     $('directions').innerHTML = dirs.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('');
     $('result').hidden = false;
     drawRoute(route, f, t);
