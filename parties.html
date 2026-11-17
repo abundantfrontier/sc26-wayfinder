@@ -149,6 +149,24 @@
   .party-search input::placeholder{color:var(--muted)}
   .party-search input:focus{border-color:var(--cyan); box-shadow:0 0 0 3px rgba(63,214,255,.25)}
   .search-count{margin:8px 2px 0; color:var(--muted); font-size:14.5px; min-height:1.2em}
+
+  .party-search{position:relative}
+  .search-drop{
+    position:absolute; left:16px; right:16px; top:100%; z-index:40; margin-top:-2px;
+    background:var(--night2); border:2px solid var(--cyan); border-top:none;
+    border-radius:0 0 12px 12px; overflow:hidden; box-shadow:0 14px 30px rgba(0,0,0,.5);
+  }
+  .search-drop[hidden]{display:none}
+  .search-drop button{
+    display:flex; justify-content:space-between; gap:10px; width:100%; text-align:left;
+    padding:11px 14px; background:none; border:none; border-top:1px solid rgba(203,191,227,.15);
+    color:var(--cream); font-size:16px; cursor:pointer;
+  }
+  .search-drop button:first-child{border-top:none}
+  .search-drop button .when{color:var(--gold); font-weight:700; white-space:nowrap; font-size:14.5px}
+  .search-drop button.active, .search-drop button:hover{background:rgba(63,214,255,.14)}
+  article.party.flash{animation:flashCard 1.6s ease-out}
+  @keyframes flashCard{0%,60%{box-shadow:0 0 0 3px var(--gold), 0 0 26px rgba(255,200,61,.55)} 100%{box-shadow:0 4px 16px rgba(0,0,0,.35)}}
   .no-results{max-width:860px; margin:10px auto; padding:0 16px; color:var(--cream); font-weight:700}
 </style>
 </head>
@@ -175,6 +193,7 @@
   <div class="party-search">
     <label for="partySearch">&#128270; Search parties</label>
     <input type="search" id="partySearch" placeholder="Search by party, host, or place&hellip;" autocomplete="off">
+    <div class="search-drop" id="searchDrop" hidden role="listbox" aria-label="Matching parties"></div>
     <p class="search-count" id="searchCount" role="status"></p>
   </div>
   <p class="no-results" id="noResults" hidden>No parties match your search.</p>
@@ -639,16 +658,22 @@
 </script>
 
 <script>
-/* Party Egg search: filter party cards by name, host, place, or date. */
+/* Party Egg search: filter party cards, with a dropdown of matches to jump to. */
 (function () {
   'use strict';
   var input = document.getElementById('partySearch');
   if (!input) return;
   var count = document.getElementById('searchCount');
   var none = document.getElementById('noResults');
+  var drop = document.getElementById('searchDrop');
   var cards = Array.prototype.slice.call(document.querySelectorAll('article.party'));
   var days = Array.prototype.slice.call(document.querySelectorAll('section.day'));
   var total = cards.length;
+  var activeIdx = -1;
+
+  function matches(q) {
+    return cards.filter(function (c) { return c.textContent.toLowerCase().indexOf(q) !== -1; });
+  }
   function apply() {
     var q = input.value.trim().toLowerCase();
     var shown = 0;
@@ -658,13 +683,60 @@
       if (hit) shown++;
     });
     days.forEach(function (d) {
-      var any = d.querySelectorAll('article.party:not([hidden])').length > 0;
-      d.hidden = !any;
+      d.hidden = d.querySelectorAll('article.party:not([hidden])').length === 0;
     });
     none.hidden = shown !== 0;
     count.textContent = q ? ('Showing ' + shown + ' of ' + total + ' parties') : '';
   }
-  input.addEventListener('input', apply);
+  function closeDrop() { drop.hidden = true; activeIdx = -1; }
+  function renderDrop() {
+    var q = input.value.trim().toLowerCase();
+    if (!q) { closeDrop(); return; }
+    var hits = matches(q).slice(0, 8);
+    if (!hits.length) { closeDrop(); return; }
+    drop.innerHTML = '';
+    hits.forEach(function (c, i) {
+      var name = c.querySelector('h3').textContent;
+      var when = c.querySelector('.time') ? c.querySelector('.time').textContent : '';
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('role', 'option');
+      b.innerHTML = '';
+      var s1 = document.createElement('span'); s1.textContent = name;
+      var s2 = document.createElement('span'); s2.className = 'when'; s2.textContent = when;
+      b.appendChild(s1); b.appendChild(s2);
+      b.addEventListener('mousedown', function (ev) { ev.preventDefault(); pick(c); });
+      b.addEventListener('mousemove', function () { setActive(i); });
+      drop.appendChild(b);
+    });
+    activeIdx = -1;
+    drop.hidden = false;
+  }
+  function setActive(i) {
+    var btns = drop.querySelectorAll('button');
+    btns.forEach(function (b, j) { b.classList.toggle('active', j === i); });
+    activeIdx = i;
+  }
+  function pick(card) {
+    input.value = card.querySelector('h3').textContent;
+    closeDrop();
+    apply();
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.remove('flash');
+    void card.offsetWidth;
+    card.classList.add('flash');
+  }
+  input.addEventListener('input', function () { apply(); renderDrop(); });
+  input.addEventListener('focus', renderDrop);
+  input.addEventListener('blur', function () { setTimeout(closeDrop, 120); });
+  input.addEventListener('keydown', function (ev) {
+    var btns = drop.querySelectorAll('button');
+    if (drop.hidden || !btns.length) return;
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive(Math.min(activeIdx + 1, btns.length - 1)); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive(Math.max(activeIdx - 1, 0)); }
+    else if (ev.key === 'Enter' && activeIdx >= 0) { ev.preventDefault(); btns[activeIdx].dispatchEvent(new Event('mousedown')); }
+    else if (ev.key === 'Escape') { closeDrop(); }
+  });
 })();
 </script>
 </body>
