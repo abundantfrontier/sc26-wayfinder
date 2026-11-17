@@ -142,6 +142,68 @@
   svg[data-band="close"] text.lbl-sm{display:inline}
   svg[data-band="close"] text.lbl-num.has-sm{display:none}
   text.lbl-callout{font-weight:800; fill:#1C191A; text-anchor:middle; paint-order:stroke; stroke:#FCF4E7; stroke-width:.18em; stroke-linejoin:round}
+  /* ---------- scavenger hunts ---------- */
+  .hunt-btn{display:flex; align-items:center; gap:12px; margin:0 0 14px; padding:10px 14px; min-height:56px;
+    border:1.5px solid var(--green); border-radius:12px; background:var(--card); color:var(--ink); text-decoration:none;
+    box-shadow:0 1px 3px rgba(28,25,26,.08)}
+  .hunt-btn:active{transform:translateY(1px)}
+  .hunt-btn:focus-visible{outline:3px solid var(--bright); outline-offset:2px}
+  .hb-icon{font-size:28px; line-height:1}
+  .hb-text{flex:1; min-width:0}
+  .hb-text strong{display:block; color:var(--green); font-size:17px}
+  .hb-text span{display:block; font-size:14px; color:#6b6252}
+  .hb-go{font-size:30px; color:var(--green); line-height:1}
+  .hunt-head{margin:0 2px 12px}
+  .hunt-head-row{display:flex; justify-content:space-between; gap:9px}
+  .hunt-head h2{margin:10px 0 4px; font-size:22px; color:var(--green); text-transform:uppercase; letter-spacing:.03em}
+  .hunt-head p{margin:0; font-size:16px}
+  .back-btn{font-size:15px; font-weight:700; padding:10px 14px; min-height:44px; border-radius:8px; cursor:pointer;
+    border:1.5px solid var(--green); background:#fff; color:var(--green)}
+  body:not(.hunt-mode) .hunt-part{display:none !important}
+  body:not(.hunt-mode) #routeForm label[for=fromInput]{margin-top:0}
+  #routeForm label[for=huntInput]{margin-top:0}
+  .picker-list li small{font-weight:500; color:#6b6252}
+  body.hunt-mode .intro, body.hunt-mode .egg-hint, body.hunt-mode #huntBtn, body.hunt-mode .to-part,
+  body.hunt-mode #formMsg, body.hunt-mode #result{display:none !important}
+  .chk{display:flex; align-items:flex-start; gap:10px; margin:0; padding:9px 2px; min-height:44px; font-size:16.5px;
+    font-weight:500; text-transform:none; letter-spacing:0; color:var(--ink); cursor:pointer}
+  .chk input{flex:none; width:24px; height:24px; margin:1px 0 0; accent-color:var(--green)}
+  .chk input[data-k]:checked + span{text-decoration:line-through; color:#7c7466}
+  .chk em{font-style:normal; color:var(--green); font-weight:700; white-space:nowrap}
+  .hunt-next .hn-dirs{margin:8px 0 2px; padding-left:22px; font-size:17px}
+  .hunt-next .hn-dirs li{margin:6px 0}
+  .hn-sub{margin:14px 0 2px; font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--green)}
+  .hn-hunt{margin:8px 0 0; font-weight:700}
+  .hn-all{width:100%; margin-top:8px}
+  .hn-then{margin:4px 0 0; padding-left:22px}
+  .hn-then li{margin:4px 0}
+  .hn-more{margin:2px 0 0; font-size:15px; color:#4c463c}
+  .hn-total{margin:12px 0 0; padding-top:10px; border-top:1px solid #e4d8bf; font-size:15.5px; font-weight:700; color:var(--green)}
+  .hunt-where a{color:var(--green); font-weight:700}
+  .hn-empty{margin:4px 0 0; font-size:16.5px}
+  .hunt{border-top:1px solid #e4d8bf; padding:12px 0 4px}
+  .hunt:first-child{border-top:0; padding-top:0}
+  .hunt h3{margin:0 0 8px; font-size:18px}
+  .prize{display:flex; gap:12px; align-items:flex-start; margin:0 0 8px}
+  .prize img{flex:none; width:96px; height:auto; max-height:128px; object-fit:contain; border-radius:8px; border:1px solid #e4d8bf; background:#f3ead6}
+  .prize-icon{flex:none; font-size:40px}
+  .prize-name{margin:0; font-weight:700}
+  .prize-how{margin:4px 0 0; font-size:15px; color:#4c463c}
+  .hunt-where{margin:0 0 2px; font-size:15.5px}
+  .hunt-prog{height:8px; border-radius:99px; background:#eadfca; overflow:hidden; margin-top:4px}
+  .hunt-prog div{height:100%; background:var(--green)}
+  .hunt-prog-t{margin:4px 0 4px; font-size:14.5px; color:#4c463c}
+  .hunt details summary{cursor:pointer; font-weight:700; color:var(--green); padding:10px 0; min-height:44px; box-sizing:border-box}
+  .hunt-how{margin:0 0 6px; font-size:16px}
+  .hunt-reset{margin:8px 0 6px}
+  .hunt-mark circle.core{stroke:#FFFDF6; stroke-width:2.5; vector-effect:non-scaling-stroke}
+  .hunt-mark.next circle.core{stroke:#1C191A; stroke-width:4}
+  .hunt-mark circle.ring{fill:none; stroke-width:34}
+  .hunt-mark text{font-weight:800; text-anchor:middle; fill:#fff}
+  .hunt-done text{font-weight:800; text-anchor:middle; fill:#1C191A}
+  .hunt-dot{display:inline-block; width:.8em; height:.8em; border-radius:50%; margin-right:.4em; vertical-align:-.05em; border:1.5px solid rgba(28,25,26,.25)}
+  .hunt-done circle{fill:#224733; opacity:.85}
+  .hunt-done text{fill:#FCF4E7}
   /* ---------- megathons panel ---------- */
   .megathons{
     background:var(--green); color:var(--cream); border-radius:12px;
@@ -181,10 +243,35 @@
 <main>
   <p class="clock" id="chiClock" hidden><span aria-hidden="true">&#128339;</span> Chicago time: <time></time></p>
   <p class="intro"><strong>Lost in the exhibit hall?</strong> We understand — we want to help. Tell us where you are and where you&rsquo;re headed, and we&rsquo;ll draw the walk.</p>
+  <a class="hunt-btn" id="huntBtn" href="?hunts">
+    <span class="hb-icon" aria-hidden="true">&#x1F5FA;&#xFE0F;</span>
+    <span class="hb-text"><strong>Scavenger hunts</strong><span id="huntBtnSub">Booth games with prizes &mdash; we&rsquo;ll plan the walk</span></span>
+    <span class="hb-go" aria-hidden="true">&rsaquo;</span>
+  </a>
+  <section class="hunt-head" id="huntHead" hidden aria-label="Scavenger hunts">
+    <div class="hunt-head-row">
+      <button type="button" class="back-btn" id="huntBack">&larr; Back to the wayfinder</button>
+      <button type="button" class="back-btn" id="huntShare">Share</button>
+    </div>
+    <h2>Scavenger hunts</h2>
+    <p>Tell us where you are. We&rsquo;ll plan the walk to every booth on your hunts, nearest first. Tick things off as you go; your check marks stay on this phone.</p>
+  </section>
   <p class="egg-hint"><span>I wonder what the &ldquo;Party Egg&rdquo; is <span class="nowrap">all about? &rarr;</span></span>
     <a class="egg-link" href="parties.html" aria-label="Party Egg"><img src="party-egg.webp" alt="" width="52" height="57"></a></p>
 
-  <section class="card" aria-label="Route finder">
+  <section class="card" id="routeForm" aria-label="Route finder">
+    <label for="huntInput" class="hunt-part">Scavenger hunt</label>
+    <div class="picker hunt-part">
+      <div class="field-row">
+        <input type="text" id="huntInput" role="combobox" aria-expanded="false" aria-controls="huntPickList" aria-autocomplete="list" autocomplete="off" placeholder="Search hunts, companies or booths">
+        <button type="button" class="drop-btn" id="huntDrop" aria-label="Show all scavenger hunts">&#9662;</button>
+        <button type="button" class="clear-btn" id="huntClear" aria-label="Clear and search hunts">&times;</button>
+      </div>
+      <div class="picker-panel" id="huntPanel" hidden>
+        <ul class="picker-list" id="huntPickList" role="listbox" aria-label="Scavenger hunts"></ul>
+        <p class="picker-empty" id="huntEmpty" hidden>No hunt matches that &mdash; try a company name or booth number.</p>
+      </div>
+    </div>
     <label for="fromInput">You are at</label>
     <div class="picker">
       <div class="field-row">
@@ -197,8 +284,8 @@
         <p class="picker-empty" id="fromEmpty" hidden>No matches — try a different name or a booth number.</p>
       </div>
     </div>
-    <label for="toInput">Take me to</label>
-    <div class="picker">
+    <label for="toInput" class="to-part">Take me to</label>
+    <div class="picker to-part">
       <div class="field-row">
         <input type="text" id="toInput" role="combobox" aria-expanded="false" aria-controls="toList" aria-autocomplete="list" autocomplete="off" placeholder="Booth number or company name">
         <button type="button" class="drop-btn" id="toDrop" aria-label="Browse all exhibitors for destination">&#9662;</button>
@@ -209,7 +296,7 @@
         <p class="picker-empty" id="toEmpty" hidden>No matches — try a different name or a booth number.</p>
       </div>
     </div>
-    <div class="btn-row">
+    <div class="btn-row to-part">
       <button type="button" class="action" id="swapBtn">&#8645; Swap</button>
       <button type="button" class="action" id="shareBtn">Share</button>
       <button type="button" class="action primary" id="routeBtn">Show my route</button>
@@ -229,6 +316,12 @@
       <button type="button" id="rotResetBtn" hidden aria-label="Turn map back upright" title="Turn map back upright"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l6 9h-4v9h-4v-9H6z" fill="#224733"/></svg></button>
     </div>
     <p class="map-hint">Pinch or scroll to zoom &middot; drag to pan &middot; twist with two fingers (or use &#x27F2; &#x27F3;) to turn the map to match the way you face &middot; double-tap to zoom in. Larger booths are labeled with company names.</p>
+  </section>
+
+  <section class="card result hunt-next" id="huntNext" hidden aria-live="polite" aria-label="Next scavenger hunt stop"></section>
+  <section class="card" id="huntList" hidden aria-label="Your scavenger hunts">
+    <h2>Your hunts</h2>
+    <div id="huntListBody"></div>
   </section>
 
   <section class="card result" id="result" hidden aria-label="Your route">
@@ -260,6 +353,7 @@
 </footer>
 
 <script src="router.js"></script>
+<script src="hunts/hunts.js"></script>
 <script src="app.js"></script>
 <script>
 /* Live clock in Chicago time (SC26 is at McCormick Place, Chicago). */

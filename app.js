@@ -167,6 +167,7 @@
     applyView();
   }
   function fitRoute() {
+    if (huntMode) { fitHunt(); return; }
     if (!currentRoute) { fitView(extent); return; }
     var xs = currentRoute.points.map(function (p) { return p[0]; });
     var ys = currentRoute.points.map(function (p) { return -p[1]; });
@@ -261,7 +262,10 @@
     view.x += m2[0] - m[0]; view.y += m2[1] - m[1];
     applyRotation();
     applyView();
-    if (currentRoute && routeEnds) {
+    if (huntMode) {
+      huntCallouts();
+      if (quarterTurns() !== oldQt) renderHuntNext();
+    } else if (currentRoute && routeEnds) {
       layoutCallouts(routeEnds[0], routeEnds[1]);
       if (quarterTurns() !== oldQt) renderDirections();
     }
@@ -435,7 +439,7 @@
     return exactNum.concat(nameStart, numStart, nameHit, numHit);
   }
   function closeAllPickers(exceptKey) {
-    ['from', 'to'].forEach(function (k) {
+    ['from', 'to', 'hunt'].forEach(function (k) {
       if (k === exceptKey) return;
       var p = $(k + 'Panel'); if (p) p.hidden = true;
       var i = $(k + 'Input'); if (i) i.setAttribute('aria-expanded', 'false');
@@ -477,6 +481,7 @@
       input.value = label(b);
       close();
       if (input.id === 'fromInput') fromBooth = b; else toBooth = b;
+      if (huntMode && input.id === 'fromInput') { huntRender(true); return; }
       if (resolveBooth($('fromInput').value) && resolveBooth($('toInput').value)) computeRoute(true);
       else if (nextInput) nextInput.focus();
     }
@@ -523,6 +528,549 @@
     });
   }
 
+  /* ---------------- scavenger hunts ----------------
+   * Hunt cards are typed up in hunts/hunts.js (window.SC26_HUNTS). Progress
+   * is kept on this phone only (localStorage). The planner goes nearest-first
+   * but keeps each hunt's order (get the card, do the stops, turn it in), and
+   * everything due at one booth, from any hunt, becomes a single visit. */
+  var HUNTS = (window.SC26_HUNTS || []).slice();
+  var HKEY = 'sc26-hunts-v1';
+  var huntMode = false, huntState = null, huntPlan = null, huntLegCache = {}, huntResetArm = null;
+
+  function loadHuntState() {
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem(HKEY) || 'null'); } catch (e) { s = null; }
+    if (!s || typeof s !== 'object') {
+      s = { active: {}, done: {} };
+      HUNTS.forEach(function (h) { s.active[h.id] = true; });
+    }
+    s.active = s.active || {}; s.done = s.done || {};
+    return s;
+  }
+  function saveHuntState() { try { localStorage.setItem(HKEY, JSON.stringify(huntState)); } catch (e) { /* private mode */ } }
+  function huntItems(h) {
+    if (h._items) return h._items;
+    var it = [];
+    if (h.pickup) it.push({ h: h, key: 'pickup', booth: h.pickup.booth, kind: 'pickup', label: h.pickup.label || 'Get the card' });
+    (h.stops || []).forEach(function (s, i) {
+      var tasks = s.tasks && s.tasks.length ? s.tasks : ['Visit the booth'];
+      tasks.forEach(function (t, j) {
+        it.push({ h: h, key: 's' + i + '.' + j, booth: s.booth, kind: 'task', label: (s.name ? s.name + ' — ' : '') + t });
+      });
+    });
+    if (h.turnIn) it.push({ h: h, key: 'turnin', booth: h.turnIn.booth, kind: 'turnin', label: h.turnIn.label || 'Turn in the card' });
+    it.forEach(function (x) {
+      x.id = h.id + '|' + x.key;
+      x.b = byNum[String(x.booth).toUpperCase()] || null;
+      if (!x.b && window.console) console.warn('Hunt ' + h.id + ': unknown booth ' + x.booth);
+    });
+    return (h._items = it);
+  }
+  function isDone(it) { return !!huntState.done[it.id]; }
+  // the hunt picked in the "Scavenger hunt" dropdown, or null for "All my hunts"
+  function focusHunt() {
+    return HUNTS.filter(function (h) { return h.id === huntState.focus; })[0] || null;
+  }
+  function activeHunts() {
+    var f = focusHunt();
+    if (f) return [f];
+    return HUNTS.filter(function (h) { return huntState.active[h.id]; });
+  }
+  function huntStart() { return resolveBooth($('fromInput').value) || byNum['3723'] || booths[0]; }
+  function huntLeft(h) { return huntItems(h).filter(function (it) { return !isDone(it); }).length; }
+
+  function planHunts(start) {
+    var todo = [], sched = {};
+    activeHunts().forEach(function (h) {
+      huntItems(h).forEach(function (it) { if (!isDone(it) && it.b) todo.push(it); });
+    });
+    function settled(it) { return isDone(it) || !!sched[it.id]; }
+    function ready(it) {
+      if (it.kind === 'pickup') return true;
+      return huntItems(it.h).every(function (o) {
+        if (o === it || !o.b) return true;
+        if (o.kind === 'pickup') return settled(o);
+        if (it.kind === 'turnin' && o.kind === 'task') return settled(o);
+        return true;
+      });
+    }
+    function dist(a, b) { return a === b ? 0 : Math.abs(a.cx - b.cx) + Math.abs(a.cy - b.cy); }
+    var visits = [], cur = start, guard = 0;
+    while (todo.length && guard++ < 500) {
+      var cands = todo.filter(ready);
+      if (!cands.length) break;
+      var best = cands[0];
+      cands.forEach(function (c) { if (dist(cur, c.b) < dist(cur, best.b)) best = c; });
+      var visit = { b: best.b, items: [] }, added = true;
+      while (added) { // keep adding what becomes doable at this same booth
+        added = false;
+        todo = todo.filter(function (it) {
+          if (it.b === visit.b && ready(it)) { visit.items.push(it); sched[it.id] = true; added = true; return false; }
+          return true;
+        });
+      }
+      visits.push(visit); cur = visit.b;
+    }
+    return visits;
+  }
+  function huntLeg(a, b) {
+    if (!a || !b || a === b) return null;
+    var k = a.n + '>' + b.n;
+    if (!(k in huntLegCache)) huntLegCache[k] = router.findRoute(a, b);
+    return huntLegCache[k];
+  }
+
+  function huntRender(fit) {
+    var start = huntStart();
+    var visits = planHunts(start);
+    var legs = [], prev = start;
+    visits.forEach(function (v) { legs.push(huntLeg(prev, v.b)); prev = v.b; });
+    huntPlan = { start: start, visits: visits, legs: legs };
+    drawHuntMap();
+    renderHuntNext();
+    renderHuntList();
+    updateHuntBtn();
+    if (fit !== false) fitHunt();
+    huntCallouts();
+  }
+  // each hunt draws in its own color (its sponsor's brand color, from
+  // hunts.js); hunts without one take the next color from this list
+  var HUNT_PALETTE = ['#7B2D8E', '#D9480F', '#2B8A3E', '#C2255C', '#5C4D00'];
+  function huntColor(h) {
+    if (!h) return '#224733';
+    return h.color || HUNT_PALETTE[HUNTS.indexOf(h) % HUNT_PALETTE.length];
+  }
+  function huntDot(h) { return '<span class="hunt-dot" style="background:' + esc(huntColor(h)) + '" aria-hidden="true"></span>'; }
+  function visitHunts(v) {
+    var out = [];
+    v.items.forEach(function (it) { if (out.indexOf(it.h) === -1) out.push(it.h); });
+    return out;
+  }
+  function drawHuntMap() {
+    clearRouteDrawing();
+    var p = huntPlan; if (!p) return;
+    var next = p.visits[0] ? p.visits[0].b : null;
+    boothRects.forEach(function (el) {
+      var b = booths[Number(el.getAttribute('data-i'))];
+      if (b === p.start) el.classList.add('sel-from');
+      else if (b === next) el.classList.add('sel-to');
+    });
+    var lines = '', marks = '';
+    var LINE = ' fill="none" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"';
+    // a leg takes the color of the hunt it is walking to; the next leg is
+    // drawn bold on a dark casing, later legs thinner and lighter
+    p.legs.forEach(function (r, i) {
+      if (!r) return;
+      var pts = r.points.map(function (q) { return q[0] + ',' + (-q[1]); }).join(' ');
+      var col = huntColor(visitHunts(p.visits[i])[0]);
+      if (i === 0) {
+        lines += '<polyline points="' + pts + '"' + LINE + ' stroke="#1C191A" stroke-width="11" opacity="0.85"/>' +
+                 '<polyline points="' + pts + '"' + LINE + ' stroke="' + col + '" stroke-width="6.5"/>';
+      } else {
+        lines = '<polyline points="' + pts + '"' + LINE + ' stroke="' + col + '" stroke-width="4" opacity="0.85"/>' + lines;
+      }
+    });
+    // booths already finished for every active hunt get a small check mark
+    var doneB = {}, openB = {};
+    activeHunts().forEach(function (h) {
+      huntItems(h).forEach(function (it) { if (!it.b) return; (isDone(it) ? doneB : openB)[it.b.n] = it.b; });
+    });
+    Object.keys(doneB).forEach(function (n) {
+      if (openB[n]) return;
+      var b = doneB[n];
+      marks += '<g class="hunt-done"><circle cx="' + b.cx + '" cy="' + (-b.cy) + '" r="58"/>' +
+               '<text x="' + b.cx + '" y="' + (-b.cy) + '" dy="0.35em" font-size="72">✓</text></g>';
+    });
+    var seen = {};
+    p.visits.forEach(function (v, i) {
+      var off = (seen[v.b.n] = (seen[v.b.n] || 0) + 1) - 1; // repeat visits sit side by side
+      var x = v.b.cx + off * 150, y = -v.b.cy;
+      var hs = visitHunts(v);
+      // a stop shared by several hunts gets a ring in the other hunt's color
+      var ring = hs.length > 1 ? '<circle class="ring" cx="' + x + '" cy="' + y + '" r="92" style="stroke:' + huntColor(hs[1]) + '"/>' : '';
+      marks += '<g class="hunt-mark' + (i === 0 ? ' next' : '') + '">' + ring +
+               '<circle class="core" cx="' + x + '" cy="' + y + '" r="70" style="fill:' + huntColor(hs[0]) + '"/>' +
+               '<text x="' + x + '" y="' + y + '" dy="0.35em" font-size="84">' + (i + 1) + '</text></g>';
+    });
+    routeLayer.innerHTML = lines + marks;
+  }
+  function huntCallouts() {
+    if (!huntMode || !huntPlan || !calloutGroup) return;
+    var cw = svg.clientWidth || 380, callFs = view.w * 13 / cw;
+    function place(booth, text, below) {
+      var bb = rotBox({ x: booth.x0, y: -booth.y1, w: booth.x1 - booth.x0, h: booth.y1 - booth.y0 });
+      var half = text.length * 0.60 * callFs / 2;
+      var x = Math.min(Math.max(bb.x + bb.w / 2, view.x + half + 30), view.x + view.w - half - 30);
+      return { x: x, y: below ? bb.y + bb.h + 105 + callFs * 0.8 : bb.y - 105, half: half, text: text };
+    }
+    function clash(a, b) { return Math.abs(a.y - b.y) < callFs * 1.3 && Math.abs(a.x - b.x) < a.half + b.half + 20; }
+    function svgText(c) { return '<text class="lbl-callout" x="' + c.x + '" y="' + c.y + '">' + esc(c.text) + '</text>'; }
+    var s = huntPlan.start, v = huntPlan.visits[0];
+    var out = '';
+    if (v && v.b === s) out = svgText(place(s, 'You’re at stop 1 · ' + (s.name || 'Booth ' + s.n)));
+    else {
+      var here = place(s, 'You are here · Booth ' + s.n);
+      if (v) {
+        var nx = place(v.b, '1 · ' + (v.b.name || 'Booth ' + v.b.n));
+        if (clash(here, nx)) { // move one label under its booth so they don't overprint
+          var alt = place(s, here.text, true);
+          if (!clash(alt, nx)) here = alt; else nx = place(v.b, nx.text, true);
+        }
+        out = svgText(here) + svgText(nx);
+      } else out = svgText(here);
+    }
+    calloutGroup.innerHTML = out;
+    calloutGroup.setAttribute('font-size', Math.round(callFs));
+  }
+  function fitHunt() {
+    var p = huntPlan; if (!p) return;
+    var xs = [p.start.cx], ys = [-p.start.cy];
+    p.visits.forEach(function (v) { xs.push(v.b.cx); ys.push(-v.b.cy); });
+    p.legs.forEach(function (r) { if (r) r.points.forEach(function (q) { xs.push(q[0]); ys.push(-q[1]); }); });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    var pad = 720, minSpan = 1800;
+    var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    var w = Math.max(x1 - x0 + 2 * pad, minSpan), h = Math.max(y1 - y0 + 2 * pad, minSpan);
+    fitView({ x: cx - w / 2, y: cy - h / 2, w: w, h: h });
+    huntCallouts();
+  }
+  function walkText(r) {
+    var ft = Math.round(r.lengthFt / 10) * 10, mins = Math.max(1, Math.round(r.lengthFt / 150));
+    return '≈ ' + ft + ' ft · about a ' + mins + '-minute walk';
+  }
+  function itemRow(it) {
+    return '<label class="chk"><input type="checkbox" data-k="' + esc(it.id) + '"' + (isDone(it) ? ' checked' : '') + '>' +
+      '<span>' + esc(it.label) + '</span></label>';
+  }
+  function renderHuntNext() {
+    var box = $('huntNext'); if (!box) return;
+    var p = huntPlan;
+    if (!activeHunts().length) {
+      box.innerHTML = '<h2>Next stop</h2><p class="hn-empty">Turn on a hunt below (&ldquo;On my route&rdquo;) and we&rsquo;ll plan the walk.</p>';
+      return;
+    }
+    if (!p || !p.visits.length) {
+      box.innerHTML = '<h2>All done! 🎉</h2><p class="hn-empty">Every hunt on your route is checked off. Enjoy the prizes!</p>';
+      return;
+    }
+    var v = p.visits[0], r = p.legs[0];
+    var html = '<h2>Next stop</h2><p class="stats"><span class="dest">1 · ' + esc(label(v.b)) + '</span>' +
+      '<span class="distline">' + (r ? walkText(r) : 'You’re here') + '</span></p>';
+    if (r) {
+      var dirs = Wayfinder.makeDirections(r.points, p.start, v.b, booths, quarterTurns());
+      html += '<ol class="hn-dirs">' + dirs.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('') + '</ol>';
+    }
+    html += '<div class="hn-items"><p class="hn-sub">At this booth</p>';
+    var byHunt = [];
+    v.items.forEach(function (it) {
+      var g = byHunt.filter(function (x) { return x.h === it.h; })[0];
+      if (!g) byHunt.push(g = { h: it.h, items: [] });
+      g.items.push(it);
+    });
+    byHunt.forEach(function (g) {
+      html += '<p class="hn-hunt">' + huntDot(g.h) + esc(g.h.title) + '</p>' + g.items.map(itemRow).join('');
+    });
+    var open = v.items.filter(function (it) { return !isDone(it); }).length;
+    if (open > 1) html += '<button type="button" class="action primary hn-all" data-act="all-here">✓ Check off all ' + open + ' here</button>';
+    html += '</div>';
+    if (p.visits.length > 1) {
+      var SHOW = 6, rest = p.visits.slice(1);
+      html += '<p class="hn-sub">Then</p><ol class="hn-then" start="2">' + rest.slice(0, SHOW).map(function (w) {
+        return '<li><strong>' + esc(label(w.b)) + '</strong> — ' + w.items.length + ' to do</li>';
+      }).join('') + '</ol>' +
+        (rest.length > SHOW ? '<p class="hn-more">… and ' + (rest.length - SHOW) + ' more stops after that.</p>' : '');
+    }
+    if (p.visits.length > 1 || p.legs[0]) {
+      var ft = 0;
+      p.legs.forEach(function (r) { if (r) ft += r.lengthFt; });
+      var mins = Math.max(1, Math.round(ft / 150));
+      html += '<p class="hn-total">Whole route: ' + p.visits.length + (p.visits.length === 1 ? ' stop' : ' stops') + ' · ≈ ' +
+        (ft >= 2640 ? (ft / 5280).toFixed(1) + ' mi' : Math.round(ft / 10) * 10 + ' ft') +
+        ' · about ' + (mins >= 90 ? (mins / 60).toFixed(1) + ' hours' : mins + ' minutes') + ' of walking</p>';
+    }
+    box.innerHTML = html;
+  }
+  function renderHuntList() {
+    var box = $('huntListBody'); if (!box) return;
+    var openIds = {};
+    Array.prototype.forEach.call(box.querySelectorAll('details[open]'), function (d) { openIds[d.getAttribute('data-h')] = true; });
+    if (!HUNTS.length) { box.innerHTML = '<p class="hn-empty">No hunts yet.</p>'; return; }
+    var f = focusHunt();
+    box.innerHTML = (f ? [f] : HUNTS).map(function (h) {
+      var items = huntItems(h), done = items.length - huntLeft(h);
+      var pz = (h.prizes || []).map(function (z) {
+        return '<div class="prize">' + (z.img ? '<img src="' + esc(z.img) + '" alt="' + esc(z.alt || z.name) + '" width="96" height="128" loading="lazy">' : '<span class="prize-icon" aria-hidden="true">🎁</span>') +
+          '<div><p class="prize-name">🏆 ' + esc(z.name) + '</p>' + (z.how ? '<p class="prize-how">' + esc(z.how) + '</p>' : '') + '</div></div>';
+      }).join('');
+      var where = h.pickup && byNum[String(h.pickup.booth).toUpperCase()];
+      return '<article class="hunt" id="hunt-' + esc(h.id) + '">' +
+        '<h3>' + huntDot(h) + esc(h.title) + '</h3>' + pz +
+        (where ? '<p class="hunt-where">Get the card at <strong>' + esc(label(where)) + '</strong></p>' : '') +
+        (h.register ? '<p class="hunt-where">' + esc(h.register.text) + (h.register.url ? ' — <a href="' + esc(h.register.url) +
+          '" target="_blank" rel="noopener">' + esc(h.register.url.replace(/^https?:\/\//, '').split('/')[0]) + '</a>' : '') + '</p>' : '') +
+        (f ? '' : '<label class="chk on-route"><input type="checkbox" data-active="' + esc(h.id) + '"' + (huntState.active[h.id] ? ' checked' : '') + '><span>On my route</span></label>') +
+        '<div class="hunt-prog" aria-hidden="true"><div style="width:' + Math.round(100 * done / items.length) + '%"></div></div>' +
+        '<p class="hunt-prog-t">' + progressText(h) + '</p>' +
+        '<details data-h="' + esc(h.id) + '"' + (openIds[h.id] ? ' open' : '') + '><summary>How to play &amp; full checklist</summary>' +
+        (h.how ? '<p class="hunt-how">' + esc(h.how) + '</p>' : '') +
+        items.map(function (it) { return itemRow(it).replace('</span></label>', ' <em>· Booth ' + esc(it.booth) + '</em></span></label>'); }).join('') +
+        '<button type="button" class="action hunt-reset" data-act="reset" data-h="' + esc(h.id) + '">Start this hunt over</button>' +
+        '</details>' +
+        '<div class="btn-row"><button type="button" class="action primary" data-act="share" data-h="' + esc(h.id) + '">Share this hunt</button></div>' +
+        '</article>';
+    }).join('');
+  }
+  // "2 of 3 stickers · card ✓" — counts the tasks; the card pickup and the
+  // prize claim are mentioned separately so the number matches the card
+  function progressText(h) {
+    var items = huntItems(h);
+    var tasks = items.filter(function (it) { return it.kind === 'task'; });
+    var tDone = tasks.filter(isDone).length;
+    var pick = items.filter(function (it) { return it.kind === 'pickup'; })[0];
+    var claim = items.filter(function (it) { return it.kind === 'turnin'; })[0];
+    if (items.every(isDone)) return 'All ' + tasks.length + ' ' + (h.unit || 'tasks') + ' done and prize claimed — finished! 🎉';
+    return tDone + ' of ' + tasks.length + ' ' + (h.unit || 'tasks') +
+      (pick && isDone(pick) ? ' · card ✓' : '') + (claim && isDone(claim) ? ' · prize claimed ✓' : '');
+  }
+  function updateHuntBtn() {
+    var sub = $('huntBtnSub'); if (!sub || !huntState) return;
+    var act = activeHunts(), left = 0, any = false;
+    act.forEach(function (h) { left += huntLeft(h); if (huntLeft(h) < huntItems(h).length) any = true; });
+    sub.textContent = any
+      ? act.length + ' on your route · ' + (left ? left + ' left to check off' : 'all done!')
+      : HUNTS.length + (HUNTS.length === 1 ? ' booth game' : ' booth games') + ' with prizes — we’ll plan the walk';
+  }
+  function huntAdvanceIfDone(before) {
+    // when every item at the stop you were heading to is ticked, you're there:
+    // make it the new starting point so the next leg starts from it
+    if (before && before.items.every(isDone) && before.b !== huntStart()) {
+      $('fromInput').value = label(before.b);
+      fromBooth = before.b;
+    }
+  }
+  function onHuntChange(e) {
+    var t = e.target;
+    if (!t || t.type !== 'checkbox') return;
+    var before = huntPlan && huntPlan.visits[0];
+    if (t.hasAttribute('data-k')) {
+      if (t.checked) huntState.done[t.getAttribute('data-k')] = true;
+      else delete huntState.done[t.getAttribute('data-k')];
+    } else if (t.hasAttribute('data-active')) {
+      huntState.active[t.getAttribute('data-active')] = t.checked;
+    } else return;
+    saveHuntState();
+    huntAdvanceIfDone(before);
+    var moved = !huntPlan || !before;
+    huntRender(false);
+    var after = huntPlan.visits[0];
+    if (moved || !after || after.b !== before.b) fitHunt();
+  }
+  function onHuntClick(e) {
+    var btn = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
+    if (!btn) return;
+    var act = btn.getAttribute('data-act');
+    if (act === 'all-here' && huntPlan && huntPlan.visits[0]) {
+      var before = huntPlan.visits[0];
+      before.items.forEach(function (it) { huntState.done[it.id] = true; });
+      saveHuntState(); huntAdvanceIfDone(before); huntRender(true);
+    } else if (act === 'share') {
+      shareHunt(HUNTS.filter(function (h) { return h.id === btn.getAttribute('data-h'); })[0] || null, btn);
+    } else if (act === 'reset') {
+      var id = btn.getAttribute('data-h');
+      if (huntResetArm !== id) { // two taps, so a stray tap can't wipe progress
+        huntResetArm = id; btn.textContent = 'Tap again to clear this hunt’s check marks';
+        setTimeout(function () { if (huntResetArm === id) { huntResetArm = null; btn.textContent = 'Start this hunt over'; } }, 4000);
+        return;
+      }
+      huntResetArm = null;
+      HUNTS.filter(function (h) { return h.id === id; }).forEach(function (h) {
+        huntItems(h).forEach(function (it) { delete huntState.done[it.id]; });
+      });
+      saveHuntState(); huntRender(true);
+    }
+  }
+  // Share a hunt (or all of them): the phone's share sheet when there is
+  // one, otherwise copy the link. The link opens that hunt in this app.
+  function shareHunt(h, btn) {
+    var base = location.href.split('#')[0].split('?')[0];
+    var url = base + (h ? '?hunt=' + encodeURIComponent(h.id) : '?hunts');
+    var text;
+    if (h) {
+      var n = {};
+      huntItems(h).forEach(function (it) { if (it.b) n[it.b.n] = 1; });
+      var prizes = (h.prizes || []).map(function (z) { return z.name; });
+      text = 'SC26 scavenger hunt: ' + h.title + ' \u2014 ' + Object.keys(n).length + (Object.keys(n).length === 1 ? ' booth' : ' booths') +
+        (prizes.length ? '. Prizes: ' + prizes.join('; ') : '') + '. Plan the walk with the SC26 Wayfinder:';
+    } else {
+      text = 'SC26 booth scavenger hunts (' + HUNTS.map(function (x) { return x.title; }).join(', ') + ') \u2014 plan the walk with the SC26 Wayfinder:';
+    }
+    function said(msg) {
+      if (!btn) return;
+      var was = btn.getAttribute('data-label') || btn.textContent;
+      btn.setAttribute('data-label', was);
+      btn.textContent = msg;
+      setTimeout(function () { btn.textContent = was; }, 2500);
+    }
+    if (navigator.share) {
+      navigator.share({ title: h ? h.title : 'SC26 scavenger hunts', text: text, url: url }).catch(function () { /* closed */ });
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text + ' ' + url).then(function () { said('Link copied \u2713'); },
+        function () { if (window.prompt) window.prompt('Copy this link:', url); });
+    } else if (window.prompt) {
+      window.prompt('Copy this link:', url);
+    }
+  }
+  function setHuntMode(on, push) {
+    if (!huntState) return;
+    if (on === huntMode) { if (on) huntRender(); return; }
+    huntMode = on;
+    document.body.classList.toggle('hunt-mode', on);
+    ['huntHead', 'huntNext', 'huntList'].forEach(function (id) { $(id).hidden = !on; });
+    closeAllPickers();
+    if (push && window.history && history.pushState) {
+      var url = on ? location.pathname + (huntState.focus ? '?hunt=' + encodeURIComponent(huntState.focus) : '?hunts')
+        : (fromBooth && toBooth ? location.pathname + '?from=' + encodeURIComponent(fromBooth.n) + '&to=' + encodeURIComponent(toBooth.n) : location.pathname);
+      history.pushState(null, '', url);
+    }
+    if (on) {
+      huntRender(true);
+      window.scrollTo(0, 0);
+    } else {
+      huntPlan = null;
+      clearRouteDrawing();
+      var f = resolveBooth($('fromInput').value), t = resolveBooth($('toInput').value);
+      if (f && t && f !== t) computeRoute(false);
+      else { currentRoute = null; $('result').hidden = true; }
+      window.scrollTo(0, 0);
+    }
+  }
+  /* "Scavenger hunt" combobox: only the hunts (plus "All my hunts"),
+   * filtered as you type by title, sponsor, or any company / booth on it */
+  var ALL_HUNTS = { id: '', title: 'All my hunts' };
+  function huntOptionText(h) { return h === ALL_HUNTS ? 'All my hunts (the ones marked “On my route”)' : h.title; }
+  function huntMatches(q) {
+    q = (q || '').trim().toLowerCase();
+    var list = [ALL_HUNTS].concat(HUNTS);
+    if (!q) return list;
+    return list.filter(function (h) {
+      if (h === ALL_HUNTS) return 'all my hunts'.indexOf(q) !== -1;
+      var hay = [h.title, h.sponsor || ''];
+      (h.stops || []).forEach(function (st) { hay.push(st.name || '', String(st.booth)); });
+      if (h.pickup) hay.push(String(h.pickup.booth));
+      return hay.join(' | ').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  function huntMatchNote(h, q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q || h === ALL_HUNTS || h.title.toLowerCase().indexOf(q) !== -1) return '';
+    var hit = (h.stops || []).filter(function (st) {
+      return (st.name || '').toLowerCase().indexOf(q) !== -1 || String(st.booth).indexOf(q) !== -1;
+    })[0];
+    return hit ? 'includes ' + (hit.name || 'a stop') + ' · Booth ' + hit.booth : '';
+  }
+  function setHuntInput() {
+    var f = focusHunt();
+    $('huntInput').value = f ? f.title : ALL_HUNTS.title;
+  }
+  function selectHunt(h) {
+    huntState.focus = h.id;
+    if (h.id) huntState.active[h.id] = true;
+    saveHuntState();
+    setHuntInput();
+    if (window.history && history.replaceState) {
+      history.replaceState(null, '', location.pathname + (h.id ? '?hunt=' + encodeURIComponent(h.id) : '?hunts'));
+    }
+    huntRender(true);
+  }
+  function buildHuntPicker() {
+    var input = $('huntInput'), panel = $('huntPanel'), list = $('huntPickList'), empty = $('huntEmpty');
+    var current = [], activeIdx = -1;
+    function render(q) {
+      current = huntMatches(q); activeIdx = -1;
+      var sel = focusHunt() || ALL_HUNTS;
+      list.innerHTML = current.map(function (h, i) {
+        var note = huntMatchNote(h, q), left = h === ALL_HUNTS ? 0 : huntItems(h).filter(function (it) { return it.kind === 'task' && !isDone(it); }).length;
+        return '<li role="option" id="huntOpt' + i + '" data-i="' + i + '"' + (h === sel ? ' class="current" aria-selected="true"' : ' aria-selected="false"') + '>' +
+          '<span class="p-name">' + (h === ALL_HUNTS ? '' : huntDot(h)) + esc(huntOptionText(h)) + (note ? '<br><small>' + esc(note) + '</small>' : '') + '</span>' +
+          (h === ALL_HUNTS ? '' : '<span class="p-num">' + (left ? left + ' left' : 'done ✓') + '</span>') + '</li>';
+      }).join('');
+      empty.hidden = current.length > 0;
+    }
+    function open(showAll) {
+      closeAllPickers('hunt');
+      render(showAll ? '' : input.value);
+      panel.hidden = false; input.setAttribute('aria-expanded', 'true');
+    }
+    function close() { panel.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
+    function pick(h) { close(); input.blur(); selectHunt(h); }
+    function setActive(i) {
+      if (!current.length) return;
+      activeIdx = Math.max(0, Math.min(current.length - 1, i));
+      Array.prototype.forEach.call(list.children, function (el, j) { el.classList.toggle('active', j === activeIdx); });
+      var el = list.children[activeIdx];
+      if (el) { el.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', el.id); }
+    }
+    input.addEventListener('focus', function () { input.select(); open(true); });
+    input.addEventListener('input', function () { open(false); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.hidden) open(true); setActive(activeIdx + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIdx - 1); }
+      else if (e.key === 'Enter') { e.preventDefault(); var h = current[activeIdx >= 0 ? activeIdx : 0]; if (h) pick(h); }
+      else if (e.key === 'Escape') { close(); setHuntInput(); }
+    });
+    list.addEventListener('pointerdown', function (e) {
+      var li = e.target && e.target.closest ? e.target.closest('li') : null;
+      if (!li) return;
+      e.preventDefault();
+      var h = current[Number(li.getAttribute('data-i'))];
+      if (h) pick(h);
+    });
+    $('huntDrop').addEventListener('click', function () {
+      if (!panel.hidden) close(); else { input.focus(); open(true); }
+    });
+    $('huntClear').addEventListener('click', function () { input.value = ''; input.focus(); open(false); });
+    document.addEventListener('pointerdown', function (e) {
+      if (panel.hidden) return;
+      var wrap = input.closest('.picker');
+      if (wrap && !wrap.contains(e.target)) { close(); setHuntInput(); }
+    });
+    input.addEventListener('blur', function () {
+      setTimeout(function () { if (document.activeElement !== input) { close(); setHuntInput(); } }, 150);
+    });
+  }
+
+  function initHunts() {
+    if (!$('huntBtn')) return;
+    huntState = loadHuntState();
+    if (huntState.focus && !focusHunt()) huntState.focus = '';
+    buildHuntPicker();
+    updateHuntBtn();
+    $('huntBtn').addEventListener('click', function (e) { e.preventDefault(); setHuntMode(true, true); });
+    $('huntBack').addEventListener('click', function () { setHuntMode(false, true); });
+    $('huntShare').addEventListener('click', function () { shareHunt(focusHunt(), $('huntShare')); });
+    ['huntNext', 'huntList'].forEach(function (id) {
+      $(id).addEventListener('change', onHuntChange);
+      $(id).addEventListener('click', onHuntClick);
+    });
+    function fromUrl() {
+      var q = new URLSearchParams(location.search);
+      var want = q.get('hunt');
+      if (want !== null && HUNTS.some(function (h) { return h.id === want; })) {
+        huntState.focus = want; huntState.active[want] = true; saveHuntState();
+      } else if (q.has('hunts')) {
+        huntState.focus = ''; saveHuntState();
+      }
+      setHuntInput();
+      if (huntMode && (q.has('hunts') || q.has('hunt'))) huntRender(true);
+      else setHuntMode(q.has('hunts') || q.has('hunt'), false);
+    }
+    window.addEventListener('popstate', fromUrl);
+    setHuntInput();
+    var q0 = new URLSearchParams(location.search);
+    if (q0.has('hunts') || q0.has('hunt')) fromUrl();
+  }
+
   /* ---------------- init ---------------- */
   function init() {
     loadBooths().then(function (list) {
@@ -542,7 +1090,8 @@
 
       // "Show my route" (or Enter) also scrolls down so the map is in view
       function showRoute() {
-        if (!computeRoute(true)) return;
+        if (huntMode) { if (resolveBooth($('fromInput').value)) huntRender(true); }
+        else if (!computeRoute(true)) return;
         var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
         $('mapCard').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
       }
@@ -566,10 +1115,12 @@
       $('rotResetBtn').addEventListener('click', function () { rotateBy(-rot); });
       [$('fromInput'), $('toInput')].forEach(function (inp) {
         inp.addEventListener('change', function () {
+          if (huntMode) { if (inp.id === 'fromInput' && resolveBooth(inp.value)) huntRender(true); return; }
           if ($('fromInput').value && $('toInput').value) computeRoute(true);
         });
         inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); closeAllPickers(); inp.blur(); showRoute(); } });
       });
+      initHunts();
       $('aboutBtn').addEventListener('click', function () {
         var panel = $('aboutPanel');
         var open = panel.hidden;
