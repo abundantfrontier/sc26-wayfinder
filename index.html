@@ -109,6 +109,7 @@
   ol#directions{margin:8px 0 2px; padding-left:22px; font-size:17px}
   ol#directions li{margin:6px 0}
   /* ---------- map ---------- */
+  #mapCard{scroll-margin-top:8px}
   .map-tools{display:flex; gap:9px; margin-bottom:10px}
   .map-tools button{
     font-size:15px; font-weight:700; padding:10px 14px; min-height:44px; border-radius:8px; cursor:pointer;
@@ -216,7 +217,7 @@
     <p class="form-msg" id="formMsg" role="alert"></p>
   </section>
 
-  <section class="card" aria-label="Exhibit hall map">
+  <section class="card" id="mapCard" aria-label="Exhibit hall map">
     <div class="map-tools">
       <button type="button" id="fitRouteBtn">Fit route</button>
       <button type="button" id="fitHallBtn">Whole hall</button>

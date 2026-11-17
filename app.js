@@ -540,7 +540,13 @@
       if (dest) { $('toInput').value = label(dest); toBooth = dest; }
       if (start && dest) computeRoute(false);
 
-      $('routeBtn').addEventListener('click', function () { computeRoute(true); });
+      // "Show my route" (or Enter) also scrolls down so the map is in view
+      function showRoute() {
+        if (!computeRoute(true)) return;
+        var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        $('mapCard').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      }
+      $('routeBtn').addEventListener('click', showRoute);
       $('swapBtn').addEventListener('click', function () {
         closeAllPickers();
         var a = $('fromInput').value;
@@ -562,7 +568,7 @@
         inp.addEventListener('change', function () {
           if ($('fromInput').value && $('toInput').value) computeRoute(true);
         });
-        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); computeRoute(true); } });
+        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); closeAllPickers(); inp.blur(); showRoute(); } });
       });
       $('aboutBtn').addEventListener('click', function () {
         var panel = $('aboutPanel');
