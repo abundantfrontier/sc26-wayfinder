@@ -48,8 +48,8 @@
   var nameLabelGroup, numLabelGroup, calloutGroup, routeLayer, boothRects = [];
   // Map rotation, in degrees clockwise. Everything except the callouts sits in
   // <g id="world" transform="rotate(rot)">, so `view` (the viewBox) is in
-  // rotated coordinates and pan/zoom need no changes. Labels are turned back
-  // by -rot (CSS var --unrot) so they always read upright.
+  // rotated coordinates and pan/zoom need no changes. Booth labels turn with
+  // the map; only the route callouts stay upright.
   var rot = 0, worldGroup, routeEnds = null;
   function rotPt(x, y, deg) {
     var t = (deg === undefined ? rot : deg) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
@@ -97,7 +97,7 @@
       minY = Math.min(minY, b.y0); maxY = Math.max(maxY, b.y1);
     });
     extent = { x: minX - 180, y: -(maxY) - 180, w: (maxX - minX) + 360, h: (maxY - minY) + 360 };
-    var rects = '', names = '', nums = '';
+    var rects = '', names = '', nums = '', smalls = '';
     booths.forEach(function (b, i) {
       var w = b.x1 - b.x0, h = b.y1 - b.y0;
       var sy = -(b.y1); // screen y (flip)
@@ -112,7 +112,21 @@
         }).join('');
         names += '<text class="lbl-name ' + tier + '" font-size="' + nameFs + '" x="' + b.cx + '" y="' + (-b.cy) + '">' + tsp + '</text>';
       } else if (w >= 100 && h >= 100) {
-        nums += '<text class="lbl-num" x="' + b.cx + '" y="' + (-b.cy) + '">' + esc(b.n) + '</text>';
+        // smaller booths: the number at near zoom; at close zoom the name
+        // (wrapped to the booth) with the number under it replaces it
+        var named = b.name && !/^reserved$/i.test(b.name.trim());
+        nums += '<text class="lbl-num' + (named ? ' has-sm' : '') + '" x="' + b.cx + '" y="' + (-b.cy) + '">' + esc(b.n) + '</text>';
+        if (named) {
+          var longest = Math.max.apply(null, b.name.split(/\s+/).map(function (x) { return x.length; }));
+          var fs = Math.min(36, Math.min(w, h * 1.4) / 4, (w - 8) / (Math.min(longest, 12) * 0.56));
+          fs = Math.max(18, fs);
+          var sl = wrapName(b.name, w - 12, fs);
+          var top = -(sl.length * fs * 1.15 + fs * 0.95) / 2 + fs * 0.8;
+          var sts = sl.map(function (ln, li) {
+            return '<tspan x="' + b.cx + '" dy="' + (li === 0 ? top : fs * 1.15) + '">' + esc(ln) + '</tspan>';
+          }).join('') + '<tspan class="sm-n" x="' + b.cx + '" dy="' + (fs * 1.1) + '" font-size="' + Math.round(fs * 0.8) + '">' + esc(b.n) + '</tspan>';
+          smalls += '<text class="lbl-sm" font-size="' + Math.round(fs) + '" x="' + b.cx + '" y="' + (-b.cy) + '">' + sts + '</text>';
+        }
       }
     });
     svg.innerHTML =
@@ -120,6 +134,7 @@
       '<g id="boothRects">' + rects + '</g>' +
       '<g id="numLabels" font-size="44">' + nums + '</g>' +
       '<g id="nameLabels">' + names + '</g>' +
+      '<g id="smallLabels">' + smalls + '</g>' +
       '<g id="routeLayer"></g>' +
       '</g>' +
       '<g id="callouts"></g>';
@@ -137,7 +152,7 @@
 
   function applyView() {
     svg.setAttribute('viewBox', view.x + ' ' + view.y + ' ' + view.w + ' ' + view.h);
-    svg.dataset.band = view.w > 7000 ? 'hall' : (view.w > 4200 ? 'mid' : 'near');
+    svg.dataset.band = view.w > 7000 ? 'hall' : (view.w > 4200 ? 'mid' : (view.w > 1700 ? 'near' : 'close'));
     var cw = svg.clientWidth || 380;
     var callFs = Math.round(view.w * 13 / cw);
     if (calloutGroup) calloutGroup.setAttribute('font-size', callFs);
@@ -257,7 +272,6 @@
   }
   function applyRotation() {
     worldGroup.setAttribute('transform', rot ? 'rotate(' + rot.toFixed(2) + ')' : '');
-    svg.style.setProperty('--unrot', (-rot).toFixed(2) + 'deg');
     var btn = $('rotResetBtn');
     if (btn) {
       btn.hidden = Math.abs(rot) < 0.5;
