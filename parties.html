@@ -138,6 +138,18 @@
   .act-msg{grid-column:1 / -1; margin:0; min-height:0; font-size:13.5px; color:var(--cyan); text-align:center}
   .act-msg:empty{display:none}
   .share-all{width:100%; margin:6px 0 2px; min-height:48px; font-size:16px}
+
+  /* ---------- party search ---------- */
+  .party-search{max-width:860px; margin:14px auto 4px; padding:0 16px}
+  .party-search label{display:block; font-weight:800; color:var(--gold); margin:0 0 6px; font-size:15px}
+  .party-search input{
+    width:100%; padding:12px 14px; font-size:17px; color:var(--cream);
+    background:var(--card); border:2px solid var(--card-edge); border-radius:12px; outline:none;
+  }
+  .party-search input::placeholder{color:var(--muted)}
+  .party-search input:focus{border-color:var(--cyan); box-shadow:0 0 0 3px rgba(63,214,255,.25)}
+  .search-count{margin:8px 2px 0; color:var(--muted); font-size:14.5px; min-height:1.2em}
+  .no-results{max-width:860px; margin:10px auto; padding:0 16px; color:var(--cream); font-weight:700}
 </style>
 </head>
 <body>
@@ -158,6 +170,14 @@
   <p class="responsibly">&#127881; Remember to always party responsibly &#127881;</p>
   <a class="back" href="index.html">&larr; Back to the Wayfinder</a>
   <p class="intro">Walking distances are estimates from McCormick Place. Times are Chicago time. Check each host&rsquo;s page before you go &mdash; details can change.</p>
+
+
+  <div class="party-search">
+    <label for="partySearch">&#128270; Search parties</label>
+    <input type="search" id="partySearch" placeholder="Search by party, host, or place&hellip;" autocomplete="off">
+    <p class="search-count" id="searchCount" role="status"></p>
+  </div>
+  <p class="no-results" id="noResults" hidden>No parties match your search.</p>
 
   <button type="button" class="act go share-all" id="shareAll">&#128228; Share the party list</button>
   <p class="act-msg" id="shareAllMsg" role="status"></p>
@@ -615,6 +635,36 @@
     setTimeout(tick, 60000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 50);
   }
   tick();
+})();
+</script>
+
+<script>
+/* Party Egg search: filter party cards by name, host, place, or date. */
+(function () {
+  'use strict';
+  var input = document.getElementById('partySearch');
+  if (!input) return;
+  var count = document.getElementById('searchCount');
+  var none = document.getElementById('noResults');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('article.party'));
+  var days = Array.prototype.slice.call(document.querySelectorAll('section.day'));
+  var total = cards.length;
+  function apply() {
+    var q = input.value.trim().toLowerCase();
+    var shown = 0;
+    cards.forEach(function (c) {
+      var hit = !q || c.textContent.toLowerCase().indexOf(q) !== -1;
+      c.hidden = !hit;
+      if (hit) shown++;
+    });
+    days.forEach(function (d) {
+      var any = d.querySelectorAll('article.party:not([hidden])').length > 0;
+      d.hidden = !any;
+    });
+    none.hidden = shown !== 0;
+    count.textContent = q ? ('Showing ' + shown + ' of ' + total + ' parties') : '';
+  }
+  input.addEventListener('input', apply);
 })();
 </script>
 </body>
