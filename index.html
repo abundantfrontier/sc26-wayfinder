@@ -114,7 +114,16 @@
     font-size:15px; font-weight:700; padding:10px 14px; min-height:44px; border-radius:8px; cursor:pointer;
     border:1.5px solid var(--green); background:#fff; color:var(--green);
   }
-  #mapWrap{border:1.5px solid var(--green); border-radius:10px; overflow:hidden; background:#F6ECD9}
+  .map-tools .rot{width:44px; padding:0; font-size:22px; line-height:1; flex:none}
+  .map-tools .rot:first-of-type{margin-left:auto}
+  #mapWrap{position:relative; border:1.5px solid var(--green); border-radius:10px; overflow:hidden; background:#F6ECD9}
+  /* shown only while the map is turned; the arrow points to the map's normal top */
+  #rotResetBtn{position:absolute; top:8px; right:8px; width:44px; height:44px; border-radius:50%;
+    border:1.5px solid var(--green); background:#fff; padding:0; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.18)}
+  #rotResetBtn[hidden]{display:none}
+  #rotResetBtn svg{display:block; margin:auto; width:24px; height:24px}
+  /* labels turn back against the map's rotation so they always read upright */
+  svg#map text.lbl-name, svg#map text.lbl-num{transform-box:fill-box; transform-origin:center; transform:rotate(var(--unrot, 0deg))}
   svg#map{display:block; width:100%; height:56vh; min-height:320px; touch-action:none; cursor:grab}
   svg#map:active{cursor:grabbing}
   .map-hint{font-size:13px; color:#6b6252; margin:8px 2px 0}
@@ -208,11 +217,14 @@
     <div class="map-tools">
       <button type="button" id="fitRouteBtn">Fit route</button>
       <button type="button" id="fitHallBtn">Whole hall</button>
+      <button type="button" class="rot" id="rotLeftBtn" aria-label="Turn map left a quarter turn" title="Turn map left">&#x27F2;</button>
+      <button type="button" class="rot" id="rotRightBtn" aria-label="Turn map right a quarter turn" title="Turn map right">&#x27F3;</button>
     </div>
     <div id="mapWrap">
       <svg id="map" role="img" aria-label="Map of the SC26 exhibit halls with all exhibitor booths"></svg>
+      <button type="button" id="rotResetBtn" hidden aria-label="Turn map back upright" title="Turn map back upright"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l6 9h-4v9h-4v-9H6z" fill="#224733"/></svg></button>
     </div>
-    <p class="map-hint">Pinch or scroll to zoom &middot; drag to pan &middot; double-tap to zoom in. Larger booths are labeled with company names.</p>
+    <p class="map-hint">Pinch or scroll to zoom &middot; drag to pan &middot; twist with two fingers (or use &#x27F2; &#x27F3;) to turn the map to match the way you face &middot; double-tap to zoom in. Larger booths are labeled with company names.</p>
   </section>
 
   <section class="card result" id="result" hidden aria-label="Your route">

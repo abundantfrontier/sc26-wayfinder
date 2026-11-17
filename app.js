@@ -46,6 +46,24 @@
   /* ---------------- map ---------------- */
   var svg, view = { x: 0, y: 0, w: 100, h: 100 }, extent = null;
   var nameLabelGroup, numLabelGroup, calloutGroup, routeLayer, boothRects = [];
+  // Map rotation, in degrees clockwise. Everything except the callouts sits in
+  // <g id="world" transform="rotate(rot)">, so `view` (the viewBox) is in
+  // rotated coordinates and pan/zoom need no changes. Labels are turned back
+  // by -rot (CSS var --unrot) so they always read upright.
+  var rot = 0, worldGroup, routeEnds = null;
+  function rotPt(x, y, deg) {
+    var t = (deg === undefined ? rot : deg) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+    return [x * c - y * s, x * s + y * c];
+  }
+  function rotBox(box) { // bounding box, in rotated coordinates, of a world box
+    var xs = [], ys = [];
+    [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]].forEach(function (p) {
+      var q = rotPt(p[0], p[1]); xs.push(q[0]); ys.push(q[1]);
+    });
+    var x0 = Math.min.apply(null, xs), y0 = Math.min.apply(null, ys);
+    return { x: x0, y: y0, w: Math.max.apply(null, xs) - x0, h: Math.max.apply(null, ys) - y0 };
+  }
+  function quarterTurns() { return Math.round(rot / 90); }
 
   function isLandmark(b) {
     var w = b.x1 - b.x0, h = b.y1 - b.y0;
@@ -98,11 +116,14 @@
       }
     });
     svg.innerHTML =
+      '<g id="world">' +
       '<g id="boothRects">' + rects + '</g>' +
       '<g id="numLabels" font-size="44">' + nums + '</g>' +
       '<g id="nameLabels">' + names + '</g>' +
       '<g id="routeLayer"></g>' +
+      '</g>' +
       '<g id="callouts"></g>';
+    worldGroup = $('world');
     nameLabelGroup = $('nameLabels'); numLabelGroup = $('numLabels');
     calloutGroup = $('callouts'); routeLayer = $('routeLayer');
     boothRects = Array.prototype.slice.call(svg.querySelectorAll('.booth'));
@@ -122,6 +143,7 @@
     if (calloutGroup) calloutGroup.setAttribute('font-size', callFs);
   }
   function fitView(box) {
+    box = rotBox(box);
     var cw = svg.clientWidth || 380, ch = svg.clientHeight || 320;
     var aspect = cw / ch;
     var w = box.w, h = w / aspect;
@@ -142,7 +164,8 @@
   }
 
   function attachMapControls() {
-    var pointers = new Map(), lastPinch = 0;
+    var pointers = new Map(), lastPinch = 0, lastAngle = null, twist = 0, twisting = false;
+    function pairAngle(pts) { return Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) * 180 / Math.PI; }
     function toWorld(cx, cy) {
       var r = svg.getBoundingClientRect();
       return [view.x + (cx - r.left) / r.width * view.w, view.y + (cy - r.top) / r.height * view.h];
@@ -153,6 +176,7 @@
       if (pointers.size === 2) {
         var pts = Array.from(pointers.values());
         lastPinch = Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]);
+        lastAngle = pairAngle(pts); twist = 0; twisting = false;
       }
     });
     svg.addEventListener('pointermove', function (e) {
@@ -167,14 +191,30 @@
       } else if (pointers.size === 2) {
         var pts = Array.from(pointers.values());
         var dist = Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]);
+        var mid = toWorld((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2);
         if (lastPinch > 0 && dist > 0) {
-          var mid = toWorld((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2);
           zoomAt(mid, lastPinch / dist);
         }
         lastPinch = dist;
+        // two-finger twist spins the map; a 12° dead zone keeps a plain
+        // pinch from wobbling it
+        var ang = pairAngle(pts);
+        if (lastAngle !== null) {
+          var d = ((ang - lastAngle + 540) % 360) - 180;
+          if (!twisting) { twist += d; if (Math.abs(twist) > 12) { twisting = true; d = twist; } }
+          if (twisting) rotateBy(d, mid);
+        }
+        lastAngle = ang;
       }
     });
-    function endPointer(e) { pointers.delete(e.pointerId); if (pointers.size < 2) lastPinch = 0; }
+    function endPointer(e) {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) {
+        lastPinch = 0; lastAngle = null;
+        if (twisting) snapRotation();
+        twisting = false;
+      }
+    }
     svg.addEventListener('pointerup', endPointer);
     svg.addEventListener('pointercancel', endPointer);
     svg.addEventListener('wheel', function (e) {
@@ -185,7 +225,7 @@
       zoomAt(toWorld(e.clientX, e.clientY), 0.55);
     });
     function zoomAt(worldPt, factor) {
-      var nw = Math.min(extent.w, Math.max(420, view.w * factor));
+      var nw = Math.min(Math.hypot(extent.w, extent.h), Math.max(420, view.w * factor));
       var f = nw / view.w;
       view.x = worldPt[0] - (worldPt[0] - view.x) * f;
       view.y = worldPt[1] - (worldPt[1] - view.y) * f;
@@ -193,6 +233,36 @@
       applyView();
     }
     window.addEventListener('resize', applyView);
+  }
+
+  // Spin the map by `deg` (clockwise) about a point given in rotated
+  // coordinates (default: the middle of the view), keeping that point still.
+  function rotateBy(deg, pivot) {
+    if (!deg) return;
+    var m = pivot || [view.x + view.w / 2, view.y + view.h / 2];
+    var oldQt = quarterTurns();
+    var m2 = rotPt(m[0], m[1], deg);
+    rot = ((rot + deg) % 360 + 540) % 360 - 180; // keep in (-180, 180]
+    view.x += m2[0] - m[0]; view.y += m2[1] - m[1];
+    applyRotation();
+    applyView();
+    if (currentRoute && routeEnds) {
+      layoutCallouts(routeEnds[0], routeEnds[1]);
+      if (quarterTurns() !== oldQt) renderDirections();
+    }
+  }
+  function snapRotation() { // land exactly on upright / sideways when close
+    var near = Math.round(rot / 90) * 90;
+    if (Math.abs(rot - near) <= 7) rotateBy(near - rot);
+  }
+  function applyRotation() {
+    worldGroup.setAttribute('transform', rot ? 'rotate(' + rot.toFixed(2) + ')' : '');
+    svg.style.setProperty('--unrot', (-rot).toFixed(2) + 'deg');
+    var btn = $('rotResetBtn');
+    if (btn) {
+      btn.hidden = Math.abs(rot) < 0.5;
+      btn.querySelector('svg').style.transform = 'rotate(' + rot.toFixed(1) + 'deg)';
+    }
   }
 
   /* ---------------- routing ---------------- */
@@ -229,10 +299,9 @@
     $('resultStats').innerHTML =
       '<span class="dest">' + esc(t.name) + ' · Booth ' + esc(t.n) + '</span>' +
       '<span class="distline">≈ ' + ft + ' ft · about a ' + mins + '-minute walk</span>';
-    var dirs = Wayfinder.makeDirections(route.points, f, t, booths);
-    $('directions').innerHTML = dirs.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('');
     $('result').hidden = false;
     drawRoute(route, f, t);
+    renderDirections();
     fitRoute();
     layoutCallouts(f, t);
     if (pushUrl !== false && window.history && history.replaceState) {
@@ -241,6 +310,11 @@
     }
     return true;
   }
+  function renderDirections() {
+    if (!currentRoute || !routeEnds) return;
+    var dirs = Wayfinder.makeDirections(currentRoute.points, routeEnds[0], routeEnds[1], booths, quarterTurns());
+    $('directions').innerHTML = dirs.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('');
+  }
   function clearRouteDrawing() {
     if (routeLayer) routeLayer.innerHTML = '';
     if (calloutGroup) calloutGroup.innerHTML = '';
@@ -248,6 +322,7 @@
   }
   function drawRoute(route, f, t) {
     clearRouteDrawing();
+    routeEnds = [f, t];
     boothRects.forEach(function (el) {
       var b = booths[Number(el.getAttribute('data-i'))];
       if (b === f) el.classList.add('sel-from');
@@ -266,15 +341,22 @@
     if (!calloutGroup) return;
     var cw = svg.clientWidth || 380;
     var callFs = view.w * 13 / cw;
-    function clampedX(booth, text) {
+    // callouts live outside the rotated group, so place them in rotated
+    // coordinates: just above the booth as it appears on screen
+    function anchor(booth) {
+      var bb = rotBox({ x: booth.x0, y: -booth.y1, w: booth.x1 - booth.x0, h: booth.y1 - booth.y0 });
+      return [bb.x + bb.w / 2, bb.y - 105];
+    }
+    function clampedX(x, text) {
       var half = text.length * 0.60 * callFs / 2;
-      return Math.min(Math.max(booth.cx, view.x + half + 30), view.x + view.w - half - 30);
+      return Math.min(Math.max(x, view.x + half + 30), view.x + view.w - half - 30);
     }
     var t1 = 'You are here · Booth ' + f.n;
     var t2 = t.name + ' · Booth ' + t.n;
+    var a1 = anchor(f), a2 = anchor(t);
     calloutGroup.innerHTML =
-      '<text class="lbl-callout" x="' + clampedX(f, t1) + '" y="' + (-(f.y1) - 105) + '">' + esc(t1) + '</text>' +
-      '<text class="lbl-callout" x="' + clampedX(t, t2) + '" y="' + (-(t.y1) - 105) + '">' + esc(t2) + '</text>';
+      '<text class="lbl-callout" x="' + clampedX(a1[0], t1) + '" y="' + a1[1] + '">' + esc(t1) + '</text>' +
+      '<text class="lbl-callout" x="' + clampedX(a2[0], t2) + '" y="' + a2[1] + '">' + esc(t2) + '</text>';
     calloutGroup.setAttribute('font-size', Math.round(callFs));
   }
 
@@ -459,6 +541,9 @@
       $('clearTo').addEventListener('click', function () { $('toInput').value = ''; $('toInput').focus(); });
       $('fitHallBtn').addEventListener('click', function () { fitView(extent); });
       $('fitRouteBtn').addEventListener('click', fitRoute);
+      $('rotLeftBtn').addEventListener('click', function () { rotateBy(-90); });
+      $('rotRightBtn').addEventListener('click', function () { rotateBy(90); });
+      $('rotResetBtn').addEventListener('click', function () { rotateBy(-rot); });
       [$('fromInput'), $('toInput')].forEach(function (inp) {
         inp.addEventListener('change', function () {
           if ($('fromInput').value && $('toInput').value) computeRoute(true);

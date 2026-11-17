@@ -346,8 +346,12 @@
     return best;
   }
 
-  function makeDirections(points, from, to, booths) {
+  // quarterTurns: how many 90° clockwise turns the map is shown rotated by
+  // (rounded), so "up the map" still matches what the person sees on screen.
+  function makeDirections(points, from, to, booths, quarterTurns) {
     if (!points || points.length < 2) return [];
+    var qt = (((quarterTurns | 0) % 4) + 4) % 4;
+    function onMap(dir) { return ON_MAP[ORDER[(ORDER.indexOf(dir) + qt) % 4]]; }
     // the first and last hops just connect the booth centres to their
     // entrances; walking directions start and end at the aisle
     var isCentre = function (p, b) { return b && b.cx !== undefined && p[0] === b.cx && p[1] === b.cy; };
@@ -409,7 +413,7 @@
       var leg = legs[m], corner = null;
       if (m > 0) corner = (prevMark && rectDist(prevMark, leg.sx, leg.sy) <= 300) ? prevMark : landmarkAt(leg.sx, leg.sy, booths, skip);
       var mark = landmarkAlong(leg, booths, function (b) { return skip(b) || (corner && b.name === corner.name); });
-      var toward = mark ? 'toward ' + mark.name + ' (' + ON_MAP[leg.dir] + ')' : ON_MAP[leg.dir];
+      var toward = mark ? 'toward ' + mark.name + ' (' + onMap(leg.dir) + ')' : onMap(leg.dir);
       if (m === 0) {
         steps.push('From ' + label(from) + ', head ' + toward + ' — about ' + ft(leg.len) + ' ft.');
       } else {
