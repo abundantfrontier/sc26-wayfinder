@@ -445,6 +445,37 @@
       var i = $(k + 'Input'); if (i) i.setAttribute('aria-expanded', 'false');
     });
   }
+  /* Keep an open dropdown inside the part of the screen the user can
+   * actually see. On a phone the keyboard covers the lower half of the
+   * page without shrinking the layout, so a list sized in vh runs under
+   * the keyboard and its lower half can never be scrolled into view.
+   * Size the list from the visual viewport instead: from the panel's
+   * top edge down to the bottom of the visible area (above the
+   * keyboard), and refit whenever that visible area changes. */
+  function fitPickerList(panel, list) {
+    if (!panel || panel.hidden || !list) return;
+    var vv = window.visualViewport;
+    if (!vv) return;
+    var rect = panel.getBoundingClientRect();
+    var avail = Math.floor(vv.height - rect.top - 14);
+    var cap = Math.floor(vv.height * 0.62);
+    list.style.maxHeight = Math.max(120, Math.min(cap, avail)) + 'px';
+  }
+  function fitPickerSoon(panel, list) {
+    fitPickerList(panel, list);
+    if (window.requestAnimationFrame) requestAnimationFrame(function () { fitPickerList(panel, list); });
+    setTimeout(function () { fitPickerList(panel, list); }, 350); // after the keyboard finishes sliding up
+  }
+  function refitOpenPickers() {
+    [['fromPanel', 'fromList'], ['toPanel', 'toList'], ['huntPanel', 'huntPickList']].forEach(function (pair) {
+      var p = $(pair[0]), l = $(pair[1]);
+      if (p && l && !p.hidden) fitPickerList(p, l);
+    });
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', refitOpenPickers);
+    window.visualViewport.addEventListener('scroll', refitOpenPickers);
+  }
   function buildPicker(input, panel, list, emptyEl, dropBtn, nextInput) {
     var activeIdx = -1, current = [];
     function isOpen() { return !panel.hidden; }
@@ -471,6 +502,7 @@
       render((showingLabel || !input.value.trim()) ? browseOrder() : filterBooths(input.value), true);
       panel.hidden = false;
       input.setAttribute('aria-expanded', 'true');
+      fitPickerSoon(panel, list);
     }
     function close() {
       panel.hidden = true;
@@ -1001,6 +1033,7 @@
       closeAllPickers('hunt');
       render(showAll ? '' : input.value);
       panel.hidden = false; input.setAttribute('aria-expanded', 'true');
+      fitPickerSoon(panel, list);
     }
     function close() { panel.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
     function pick(h) { close(); input.blur(); selectHunt(h); }
