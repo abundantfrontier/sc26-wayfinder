@@ -113,7 +113,7 @@ window.SC26_HUNTS = [
   },
   {
     id: 'aws-simmania-bingo',
-    title: 'SimMania — The Simpossible Trail Bingo',
+    title: 'AWS SimMania — The Simpossible Trail Bingo',
     color: '#FF9900', // AWS orange
     unit: 'stamps',
     sponsor: 'AWS / AMD',
