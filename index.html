@@ -68,6 +68,13 @@
     border:1.5px solid #9a8f7a; border-radius:9px; background:#fff; color:var(--ink);
   }
   input[type="text"]:focus{outline:3px solid var(--bright); outline-offset:1px; border-color:var(--green)}
+  .select-btn{
+    flex:1; min-width:0; min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    font-size:17px; font-weight:600; text-align:left; padding:11px 12px;
+    border:1.5px solid #9a8f7a; border-radius:9px; background:#fff; color:var(--ink); cursor:pointer;
+  }
+  .select-btn:focus-visible{outline:3px solid var(--bright); outline-offset:1px; border-color:var(--green)}
+  .select-btn .select-caret{color:var(--green); font-size:15px}
   .clear-btn{
     flex:0 0 auto; width:46px; min-height:46px; border:1.5px solid #9a8f7a; background:#fff; border-radius:9px;
     font-size:19px; color:var(--ink); cursor:pointer;
@@ -263,13 +270,11 @@
     <label for="huntInput" class="hunt-part">Scavenger hunt</label>
     <div class="picker hunt-part">
       <div class="field-row">
-        <input type="text" id="huntInput" role="combobox" aria-expanded="false" aria-controls="huntPickList" aria-autocomplete="list" autocomplete="off" placeholder="Search hunts, companies or booths">
-        <button type="button" class="drop-btn" id="huntDrop" aria-label="Show all scavenger hunts">&#9662;</button>
-        <button type="button" class="clear-btn" id="huntClear" aria-label="Clear and search hunts">&times;</button>
+        <button type="button" id="huntInput" class="select-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="huntPickList"><span id="huntInputText">All my hunts</span><span class="select-caret" aria-hidden="true">&#9662;</span></button>
       </div>
       <div class="picker-panel" id="huntPanel" hidden>
         <ul class="picker-list" id="huntPickList" role="listbox" aria-label="Scavenger hunts"></ul>
-        <p class="picker-empty" id="huntEmpty" hidden>No hunt matches that &mdash; try a company name or booth number.</p>
+        <p class="picker-empty" id="huntEmpty" hidden>No hunts available.</p>
       </div>
     </div>
     <label for="fromInput">You are at</label>

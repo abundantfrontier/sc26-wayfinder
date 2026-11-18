@@ -977,33 +977,15 @@
       window.scrollTo(0, 0);
     }
   }
-  /* "Scavenger hunt" combobox: only the hunts (plus "All my hunts"),
-   * filtered as you type by title, sponsor, or any company / booth on it */
+  /* "Scavenger hunt" dropdown: a plain dropdown (plus "All my hunts").
+   * Deliberately NOT a searchable combobox — there is no text field, so
+   * tapping it never opens the phone keyboard; you just tap a hunt. */
   var ALL_HUNTS = { id: '', title: 'All my hunts' };
   function huntOptionText(h) { return h === ALL_HUNTS ? 'All my hunts (the ones marked “On my route”)' : h.title; }
-  function huntMatches(q) {
-    q = (q || '').trim().toLowerCase();
-    var list = [ALL_HUNTS].concat(HUNTS);
-    if (!q) return list;
-    return list.filter(function (h) {
-      if (h === ALL_HUNTS) return 'all my hunts'.indexOf(q) !== -1;
-      var hay = [h.title, h.sponsor || ''];
-      (h.stops || []).forEach(function (st) { hay.push(st.name || '', String(st.booth)); });
-      if (h.pickup) hay.push(String(h.pickup.booth));
-      return hay.join(' | ').toLowerCase().indexOf(q) !== -1;
-    });
-  }
-  function huntMatchNote(h, q) {
-    q = (q || '').trim().toLowerCase();
-    if (!q || h === ALL_HUNTS || h.title.toLowerCase().indexOf(q) !== -1) return '';
-    var hit = (h.stops || []).filter(function (st) {
-      return (st.name || '').toLowerCase().indexOf(q) !== -1 || String(st.booth).indexOf(q) !== -1;
-    })[0];
-    return hit ? 'includes ' + (hit.name || 'a stop') + ' · Booth ' + hit.booth : '';
-  }
   function setHuntInput() {
     var f = focusHunt();
-    $('huntInput').value = f ? f.title : ALL_HUNTS.title;
+    var t = $('huntInputText');
+    if (t) t.textContent = f ? f.title : ALL_HUNTS.title;
   }
   function selectHunt(h) {
     huntState.focus = h.id;
@@ -1016,41 +998,43 @@
     huntRender(true);
   }
   function buildHuntPicker() {
-    var input = $('huntInput'), panel = $('huntPanel'), list = $('huntPickList'), empty = $('huntEmpty');
-    var current = [], activeIdx = -1;
-    function render(q) {
-      current = huntMatches(q); activeIdx = -1;
+    var btn = $('huntInput'), panel = $('huntPanel'), list = $('huntPickList'), empty = $('huntEmpty');
+    var current = [], activeIdx = -1, pickedAt = 0;
+    function render() {
+      current = [ALL_HUNTS].concat(HUNTS); activeIdx = -1;
       var sel = focusHunt() || ALL_HUNTS;
       list.innerHTML = current.map(function (h, i) {
-        var note = huntMatchNote(h, q), left = h === ALL_HUNTS ? 0 : huntItems(h).filter(function (it) { return it.kind === 'task' && !isDone(it); }).length;
+        var left = h === ALL_HUNTS ? 0 : huntItems(h).filter(function (it) { return it.kind === 'task' && !isDone(it); }).length;
         return '<li role="option" id="huntOpt' + i + '" data-i="' + i + '"' + (h === sel ? ' class="current" aria-selected="true"' : ' aria-selected="false"') + '>' +
-          '<span class="p-name">' + (h === ALL_HUNTS ? '' : huntDot(h)) + esc(huntOptionText(h)) + (note ? '<br><small>' + esc(note) + '</small>' : '') + '</span>' +
+          '<span class="p-name">' + (h === ALL_HUNTS ? '' : huntDot(h)) + esc(huntOptionText(h)) + '</span>' +
           (h === ALL_HUNTS ? '' : '<span class="p-num">' + (left ? left + ' left' : 'done ✓') + '</span>') + '</li>';
       }).join('');
       empty.hidden = current.length > 0;
     }
-    function open(showAll) {
+    function open() {
       closeAllPickers('hunt');
-      render(showAll ? '' : input.value);
-      panel.hidden = false; input.setAttribute('aria-expanded', 'true');
+      render();
+      panel.hidden = false; btn.setAttribute('aria-expanded', 'true');
       fitPickerSoon(panel, list);
     }
-    function close() { panel.hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
-    function pick(h) { close(); input.blur(); selectHunt(h); }
+    function close() { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.removeAttribute('aria-activedescendant'); }
+    function pick(h) { pickedAt = Date.now(); close(); selectHunt(h); }
     function setActive(i) {
       if (!current.length) return;
       activeIdx = Math.max(0, Math.min(current.length - 1, i));
       Array.prototype.forEach.call(list.children, function (el, j) { el.classList.toggle('active', j === activeIdx); });
       var el = list.children[activeIdx];
-      if (el) { el.scrollIntoView({ block: 'nearest' }); input.setAttribute('aria-activedescendant', el.id); }
+      if (el) { el.scrollIntoView({ block: 'nearest' }); btn.setAttribute('aria-activedescendant', el.id); }
     }
-    input.addEventListener('focus', function () { input.select(); open(true); });
-    input.addEventListener('input', function () { open(false); });
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.hidden) open(true); setActive(activeIdx + 1); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(activeIdx - 1); }
-      else if (e.key === 'Enter') { e.preventDefault(); var h = current[activeIdx >= 0 ? activeIdx : 0]; if (h) pick(h); }
-      else if (e.key === 'Escape') { close(); setHuntInput(); }
+    btn.addEventListener('click', function () {
+      if (Date.now() - pickedAt < 350) return; // the click that follows a keyboard pick
+      if (panel.hidden) open(); else close();
+    });
+    btn.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.hidden) open(); setActive(activeIdx + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (!panel.hidden) setActive(activeIdx - 1); }
+      else if (e.key === 'Enter' && !panel.hidden && activeIdx >= 0 && current[activeIdx]) { e.preventDefault(); pick(current[activeIdx]); }
+      else if (e.key === 'Escape' && !panel.hidden) close();
     });
     list.addEventListener('pointerdown', function (e) {
       var li = e.target && e.target.closest ? e.target.closest('li') : null;
@@ -1059,17 +1043,13 @@
       var h = current[Number(li.getAttribute('data-i'))];
       if (h) pick(h);
     });
-    $('huntDrop').addEventListener('click', function () {
-      if (!panel.hidden) close(); else { input.focus(); open(true); }
-    });
-    $('huntClear').addEventListener('click', function () { input.value = ''; input.focus(); open(false); });
     document.addEventListener('pointerdown', function (e) {
       if (panel.hidden) return;
-      var wrap = input.closest('.picker');
-      if (wrap && !wrap.contains(e.target)) { close(); setHuntInput(); }
+      var wrap = btn.closest('.picker');
+      if (wrap && !wrap.contains(e.target)) close();
     });
-    input.addEventListener('blur', function () {
-      setTimeout(function () { if (document.activeElement !== input) { close(); setHuntInput(); } }, 150);
+    btn.addEventListener('blur', function () {
+      setTimeout(function () { if (document.activeElement !== btn) close(); }, 150);
     });
   }
 
