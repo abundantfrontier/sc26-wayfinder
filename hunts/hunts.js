@@ -110,5 +110,28 @@ window.SC26_HUNTS = [
         img: 'hunts/intel-tier2.webp', alt: 'Intel earbuds case and an Intel power bank charging a phone' },
       { name: '1,750+ points: Grand Prize drawing', how: 'Reaching the Grand Prize total enters you in the drawing automatically.' }
     ]
+  },
+  {
+    id: 'aws-simmania-bingo',
+    title: 'SimMania — The Simpossible Trail Bingo',
+    color: '#FF9900', // AWS orange
+    unit: 'stamps',
+    sponsor: 'AWS / AMD',
+    how: 'At the AWS booth, visit the demo pods and theater, collect a stamp for each square, and complete a row — rows count across, down, or diagonally. Hosted by AMD at the AWS booth, Tue Nov 17, 4–6 PM.',
+    pickup: { booth: '4819', label: 'Get the bingo card at the AWS booth' },
+    stops: [
+      { booth: '4819', name: 'AWS', tasks: [
+        'SIMULATE — Watched a solver run on AMD-powered EC2',
+        'SCALE — Saw a simulation scale to the cloud',
+        'ACCELERATE W/ AI — Queried an AI surrogate model',
+        'CONNECT — Talked to a partner expert',
+        'ACCELERATE W/ AI — Heard “surrogate model” explained in 30 sec',
+        'ACCELERATE W/ AI — Watched an agent set up a simulation',
+        'SCALE — Learned how AWS PCS scales clusters',
+        'THEATER — Caught a theater presentation',
+        'TRANSFORM — Found a real customer use case'
+      ] }
+    ],
+    turnIn: { booth: '4819', label: 'Bring the completed card (with your name and company on it) back to the AWS booth' }
   }
 ];
